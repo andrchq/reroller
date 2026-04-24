@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  STOPPED
+  FAILED
+  COMPLETED
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  SUCCESS
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ProviderAccount {
+  id                 String           @id @default(cuid())
+  name               String
+  provider           String           @default("selectel")
+  accountId          String
+  username           String
+  encryptedPassword  String
+  encryptedIamToken  String?
+  iamTokenExpiresAt  DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  projects           ProjectBinding[]
+  profiles           SearchProfile[]
+}
+
+model ProjectBinding {
+  id                String          @id @default(cuid())
+  providerAccountId String
+  providerAccount   ProviderAccount @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  externalProjectId String
+  name              String
+  url               String?
+  createdAt         DateTime        @default(now())
+  profiles          SearchProfile[]
+
+  @@unique([providerAccountId, externalProjectId])
+}
+
+model SearchProfile {
+  id                String           @id @default(cuid())
+  name              String
+  providerAccountId String
+  providerAccount   ProviderAccount  @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  projectBindingId  String
+  projectBinding    ProjectBinding   @relation(fields: [projectBindingId], references: [id], onDelete: Cascade)
+  region            String
+  enabled           Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  targets           TargetIp[]
+  rateLimit         RateLimitPolicy?
+  runs              Run[]
+  findings          Finding[]
+}
+
+model TargetIp {
+  id              String        @id @default(cuid())
+  searchProfileId String
+  searchProfile   SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
+  value           String
+  createdAt       DateTime      @default(now())
+}
+
+model RateLimitPolicy {
+  id                 String        @id @default(cuid())
+  searchProfileId    String        @unique
+  searchProfile      SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
+  requestsPerMinute  Int           @default(6)
+  minDelayMs         Int           @default(10000)
+  burst              Int           @default(1)
+  cooldownAfterError Int           @default(60000)
+  maxAttempts        Int           @default(100)
+}
+
+model Run {
+  id              String        @id @default(cuid())
+  searchProfileId String
+  searchProfile   SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
+  status          RunStatus     @default(QUEUED)
+  attempts        Int           @default(0)
+  startedAt       DateTime?
+  stoppedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  logs            RunLog[]
+  findings        Finding[]
+}
+
+model RunLog {
+  id        String   @id @default(cuid())
+  runId     String
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  level     LogLevel @default(INFO)
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([runId, createdAt])
+}
+
+model Finding {
+  id                  String        @id @default(cuid())
+  searchProfileId     String
+  searchProfile       SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
+  runId               String
+  run                 Run           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  floatingIpId        String
+  floatingIpAddress   String
+  projectId           String
+  region              String
+  raw                 Json?
+  notificationSentAt  DateTime?
+  createdAt           DateTime      @default(now())
+}
+
+model TelegramConfig {
+  id                String   @id @default(cuid())
+  encryptedBotToken String
+  chatId            String
+  messageThreadId   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
