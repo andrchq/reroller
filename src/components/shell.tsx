@@ -6,7 +6,7 @@ const nav = [
   { href: "/", label: "Обзор", icon: Home },
   { href: "/accounts", label: "Аккаунты", icon: KeyRound },
   { href: "/profiles", label: "Профили", icon: Target },
-  { href: "/runs", label: "Запуски и логи", icon: Radio },
+  { href: "/tasks", label: "Задачи", icon: Radio },
   { href: "/findings", label: "Находки", icon: ClipboardList },
   { href: "/settings", label: "Настройки", icon: Settings },
 ];

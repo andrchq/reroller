@@ -204,7 +204,8 @@ export async function startProfileAction(formData: FormData) {
   const run = await prisma.run.create({ data: { searchProfileId: profileId, status: "QUEUED" } });
   await enqueueRun(run.id);
   revalidatePath("/runs");
-  redirect(`/runs?run=${run.id}`);
+  revalidatePath("/tasks");
+  redirect(`/tasks?run=${run.id}`);
 }
 
 export async function stopRunAction(formData: FormData) {
@@ -215,6 +216,21 @@ export async function stopRunAction(formData: FormData) {
     data: { status: "STOPPED", stoppedAt: new Date() },
   });
   revalidatePath("/runs");
+  revalidatePath("/tasks");
+}
+
+export async function stopProfileRunsAction(formData: FormData) {
+  await requireUser();
+  const profileId = requiredString(formData, "profileId");
+  await prisma.run.updateMany({
+    where: {
+      searchProfileId: profileId,
+      status: { in: ["QUEUED", "RUNNING"] },
+    },
+    data: { status: "STOPPED", stoppedAt: new Date() },
+  });
+  revalidatePath("/runs");
+  revalidatePath("/tasks");
 }
 
 export async function saveTelegramAction(formData: FormData) {
