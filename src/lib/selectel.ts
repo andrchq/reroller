@@ -15,6 +15,8 @@ type SelectelProjectDetails = SelectelProject & {
   quotas?: Record<string, Array<{ region?: string; zone?: string; value?: number; used?: number }>>;
 };
 
+export const defaultSelectelRegions = ["ru-1", "ru-2", "ru-3", "ru-7", "ru-8"];
+
 export type SelectelFloatingIp = {
   id: string;
   floating_ip_address: string;
@@ -128,16 +130,32 @@ export async function getSelectelProjectDetails(account: ProviderAccount, projec
 
 export function extractProjectRegions(project: SelectelProjectDetails | null) {
   const regions = new Set<string>();
-  if (!project?.quotas) return [];
+  if (!project) return [];
 
-  for (const quotaItems of Object.values(project.quotas)) {
-    if (!Array.isArray(quotaItems)) continue;
-    for (const quota of quotaItems) {
-      if (quota.region) {
-        regions.add(quota.region);
-      }
+  const addRegion = (value: unknown) => {
+    if (typeof value === "string" && /^ru-\d+$/.test(value)) {
+      regions.add(value);
     }
-  }
+  };
+
+  addRegion((project as Record<string, unknown>).region);
+  addRegion((project as Record<string, unknown>).location);
+
+  const collect = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) collect(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    addRegion(record.region);
+    addRegion(record.location);
+    for (const item of Object.values(record)) {
+      if (typeof item === "object") collect(item);
+    }
+  };
+
+  collect(project.quotas);
 
   return [...regions].sort((a, b) => a.localeCompare(b));
 }

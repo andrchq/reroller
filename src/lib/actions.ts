@@ -6,7 +6,7 @@ import { createSession, destroySession, hashPassword, requireUser, verifyPasswor
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { enqueueRun } from "@/lib/queue";
-import { extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
+import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
 import { splitLines } from "@/lib/utils";
 
 function requiredString(formData: FormData, key: string) {
@@ -72,41 +72,71 @@ export async function syncProjectsAction(formData: FormData) {
   await requireUser();
   const accountId = requiredString(formData, "accountDbId");
   const account = await prisma.providerAccount.findUnique({ where: { id: accountId } });
-  if (!account) throw new Error("Account not found");
-  const projects = await listSelectelProjects(account);
+  if (!account) {
+    return { ok: false, message: "Аккаунт не найден." };
+  }
 
-  for (const project of projects) {
-    const binding = await prisma.projectBinding.upsert({
-      where: {
-        providerAccountId_externalProjectId: {
+  try {
+    const projects = await listSelectelProjects(account);
+    let syncedProjects = 0;
+    let syncedRegions = 0;
+    const warnings: string[] = [];
+
+    for (const project of projects) {
+      const binding = await prisma.projectBinding.upsert({
+        where: {
+          providerAccountId_externalProjectId: {
+            providerAccountId: account.id,
+            externalProjectId: project.id,
+          },
+        },
+        create: {
           providerAccountId: account.id,
           externalProjectId: project.id,
+          name: project.name,
+          url: project.url,
         },
-      },
-      create: {
-        providerAccountId: account.id,
-        externalProjectId: project.id,
-        name: project.name,
-        url: project.url,
-      },
-      update: {
-        name: project.name,
-        url: project.url,
-      },
-    });
+        update: {
+          name: project.name,
+          url: project.url,
+        },
+      });
+      syncedProjects += 1;
 
-    const details = await getSelectelProjectDetails(account, project.id);
-    const regions = extractProjectRegions(details);
-    await prisma.projectRegion.deleteMany({ where: { projectBindingId: binding.id } });
-    if (regions.length > 0) {
+      let regions: string[] = [];
+      try {
+        const details = await getSelectelProjectDetails(account, project.id);
+        regions = extractProjectRegions(details);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "неизвестная ошибка";
+        warnings.push(`${project.name}: не удалось получить регионы из квот (${message})`);
+      }
+
+      if (regions.length === 0) {
+        regions = defaultSelectelRegions;
+        warnings.push(`${project.name}: использован стандартный список регионов Selectel`);
+      }
+
+      await prisma.projectRegion.deleteMany({ where: { projectBindingId: binding.id } });
       await prisma.projectRegion.createMany({
         data: regions.map((name) => ({ projectBindingId: binding.id, name })),
         skipDuplicates: true,
       });
+      syncedRegions += regions.length;
     }
+
+    revalidatePath("/accounts");
+    revalidatePath("/profiles");
+    return {
+      ok: true,
+      message: `Синхронизировано проектов: ${syncedProjects}, регионов: ${syncedRegions}.${warnings.length ? ` ${warnings.join(" ")}` : ""}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Неизвестная ошибка синхронизации.",
+    };
   }
-  revalidatePath("/accounts");
-  revalidatePath("/profiles");
 }
 
 export async function createProfileAction(formData: FormData) {

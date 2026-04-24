@@ -1,6 +1,7 @@
 import { AppShell, PageHeader } from "@/components/shell";
 import { Button, Card, Field, InfoTip, Input } from "@/components/ui";
-import { createAccountAction, syncProjectsAction } from "@/lib/actions";
+import { SyncProjectsButton } from "@/components/sync-projects-button";
+import { createAccountAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -8,7 +9,7 @@ export default async function AccountsPage() {
   await requireUser();
   const accounts = await prisma.providerAccount.findMany({
     orderBy: { createdAt: "desc" },
-    include: { projects: true },
+    include: { projects: { include: { regions: true } } },
   });
 
   return (
@@ -26,11 +27,17 @@ export default async function AccountsPage() {
                     <div className="text-sm text-[var(--muted)]">ID аккаунта: {account.accountId} / Пользователь: {account.username}</div>
                     <div className="mt-1 text-xs text-[var(--muted)]">Проектов: {account.projects.length}</div>
                   </div>
-                  <form action={syncProjectsAction}>
-                    <input type="hidden" name="accountDbId" value={account.id} />
-                    <Button type="submit">Синхронизировать</Button>
-                  </form>
+                  <SyncProjectsButton accountId={account.id} />
                 </div>
+                {account.projects.length > 0 ? (
+                  <div className="mt-3 grid gap-1 text-xs text-[var(--muted)]">
+                    {account.projects.map((project) => (
+                      <div key={project.id}>
+                        {project.name}: {project.regions.length > 0 ? project.regions.map((region) => region.name).join(", ") : "регионов нет"}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
             {accounts.length === 0 ? <div className="text-sm text-[var(--muted)]">Аккаунтов пока нет.</div> : null}
