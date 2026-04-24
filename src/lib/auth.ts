@@ -6,6 +6,13 @@ import { prisma } from "@/lib/prisma";
 
 const cookieName = "reroller_session";
 
+function shouldUseSecureCookie() {
+  if (process.env.AUTH_COOKIE_SECURE) {
+    return process.env.AUTH_COOKIE_SECURE === "true";
+  }
+  return process.env.NEXT_PUBLIC_APP_URL?.startsWith("https://") ?? process.env.NODE_ENV === "production";
+}
+
 function sign(value: string) {
   const secret = process.env.AUTH_SECRET ?? process.env.APP_SECRET_KEY;
   if (!secret) {
@@ -29,7 +36,7 @@ export async function createSession(userId: string) {
   jar.set(cookieName, `${value}.${sign(value)}`, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookie(),
     expires: new Date(expiresAt),
     path: "/",
   });

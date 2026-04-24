@@ -156,12 +156,19 @@ After Caddy is ready, set:
 
 ```env
 NEXT_PUBLIC_APP_URL="https://ps.prsta.xyz"
+AUTH_COOKIE_SECURE="true"
 ```
 
 Then restart the app:
 
 ```bash
 sudo reroller restart
+```
+
+If you open the panel directly by `http://SERVER_IP:4040`, keep:
+
+```env
+AUTH_COOKIE_SECURE="false"
 ```
 
 ## Selectel Flow
