@@ -8,6 +8,21 @@ type TelegramSendInput = {
   text: string;
 };
 
+const separator = "➖➖➖➖➖➖➖➖➖";
+
+const premiumEmoji = {
+  alien: '<tg-emoji emoji-id="5370869711888194012">👾</tg-emoji>',
+  demon: '<tg-emoji emoji-id="5372951839018850336">👹</tg-emoji>',
+  eyes: '<tg-emoji emoji-id="5424885441100782420">👀</tg-emoji>',
+};
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 export function buildFindingMessage(input: {
   profileName: string;
   accountName: string;
@@ -17,22 +32,26 @@ export function buildFindingMessage(input: {
   floatingIpId: string;
 }) {
   return [
-    "Reroller: найден подходящий IP",
-    `Профиль: ${input.profileName}`,
-    `Аккаунт: ${input.accountName}`,
-    `Проект: ${input.projectName}`,
-    `Регион: ${input.region}`,
-    `IP: ${input.floatingIpAddress}`,
-    `ID Floating IP: ${input.floatingIpId}`,
-    `Время: ${new Date().toISOString()}`,
+    `<b>${premiumEmoji.alien} Reroller: найден подходящий IP</b>`,
+    separator,
+    `◽️ <b>Профиль:</b> ${escapeHtml(input.profileName)}`,
+    `◽️ <b>Аккаунт:</b> ${escapeHtml(input.accountName)}`,
+    `◽️ <b>Проект:</b> ${escapeHtml(input.projectName)}`,
+    `◽️ <b>Регион:</b> ${escapeHtml(input.region)}`,
+    `◽️ <b>IP:</b> ${escapeHtml(input.floatingIpAddress)}`,
+    `◽️ <b>ID Floating IP:</b> ${escapeHtml(input.floatingIpId)}`,
+    `◽️ <b>Время:</b> ${new Date().toISOString()}`,
+    separator,
   ].join("\n");
 }
 
 export function buildTelegramTestMessage() {
   return [
-    "Reroller: проверка Telegram",
-    "Если вы видите это сообщение, бот, чат и топик настроены корректно.",
-    `Время: ${new Date().toISOString()}`,
+    `<b>${premiumEmoji.eyes} Reroller: проверка Telegram</b>`,
+    separator,
+    "◽️ <b>Статус:</b> бот, чат и топик настроены корректно.",
+    `◽️ <b>Время:</b> ${new Date().toISOString()}`,
+    separator,
   ].join("\n");
 }
 
@@ -40,6 +59,7 @@ function telegramPayload(input: TelegramSendInput) {
   const payload: Record<string, string | number | boolean> = {
     chat_id: input.chatId,
     text: input.text,
+    parse_mode: "HTML",
     disable_web_page_preview: true,
   };
 
