@@ -58,7 +58,7 @@ export function buildFindingMessage(input: {
     `◽️ <b>IP:</b> <code>${escapeHtml(input.floatingIpAddress)}</code>`,
     `◽️ <b>ID Floating IP:</b> <code>${escapeHtml(input.floatingIpId)}</code>`,
     separator,
-    `◽️ <b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
+    `<b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
   ].join("\n");
 }
 
@@ -71,7 +71,7 @@ export function buildTelegramTestMessage() {
     "◽️ <b>Чат:</b> сообщение доставлено",
     "◽️ <b>Топик:</b> проверен, если был указан",
     separator,
-    `◽️ <b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
+    `<b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
   ].join("\n");
 }
 
