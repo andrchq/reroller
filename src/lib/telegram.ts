@@ -33,9 +33,9 @@ export function buildFindingMessage(input: {
 }) {
   return [
     `<b>${premiumEmoji.alien} Reroller: найден подходящий IP</b>`,
+    "",
     `◽️ <b>Профиль:</b> ${escapeHtml(input.profileName)}`,
     `◽️ <b>Аккаунт:</b> ${escapeHtml(input.accountName)}`,
-    separator,
     `◽️ <b>Проект:</b> ${escapeHtml(input.projectName)}`,
     `◽️ <b>Регион:</b> ${escapeHtml(input.region)}`,
     separator,
@@ -49,6 +49,7 @@ export function buildFindingMessage(input: {
 export function buildTelegramTestMessage() {
   return [
     `<b>${premiumEmoji.eyes} Reroller: проверка Telegram</b>`,
+    "",
     "◽️ <b>Статус:</b> бот подключен",
     separator,
     "◽️ <b>Чат:</b> сообщение доставлено",
