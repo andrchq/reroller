@@ -52,6 +52,7 @@ async function processRun(runId: string) {
       const floatingIp = await allocateFloatingIp({
         account: profile.providerAccount,
         projectId: profile.projectBinding.externalProjectId,
+        projectName: profile.projectBinding.name,
         region: profile.region,
         requestedIp,
       });
@@ -100,7 +101,11 @@ async function processRun(runId: string) {
       }
 
       await appendRunLog(runId, "INFO", `IP ${address} не совпал, удаляю Floating IP`);
-      await releaseFloatingIp(profile.providerAccount, floatingIp.id);
+      await releaseFloatingIp({
+        account: profile.providerAccount,
+        projectName: profile.projectBinding.name,
+        floatingIpId: floatingIp.id,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown worker error";
       await appendRunLog(runId, "ERROR", message);

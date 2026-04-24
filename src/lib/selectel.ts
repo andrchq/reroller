@@ -15,6 +15,12 @@ type SelectelProjectDetails = SelectelProject & {
   quotas?: Record<string, Array<{ region?: string; zone?: string; value?: number; used?: number }>>;
 };
 
+type TokenScope =
+  | { type: "account" }
+  | { type: "project"; projectName: string };
+
+const projectTokenCache = new Map<string, { token: string; expiresAt: number }>();
+
 export const defaultSelectelRegions = ["ru-1", "ru-2", "ru-3", "ru-7", "ru-8"];
 
 export type SelectelFloatingIp = {
@@ -31,18 +37,8 @@ async function readError(response: Response) {
   return `${response.status} ${response.statusText}${text ? `: ${text}` : ""}`;
 }
 
-export async function getSelectelToken(account: ProviderAccount, forceRefresh = false) {
-  if (
-    !forceRefresh &&
-    account.encryptedIamToken &&
-    account.iamTokenExpiresAt &&
-    account.iamTokenExpiresAt > new Date(Date.now() + 60_000)
-  ) {
-    return decryptSecret(account.encryptedIamToken);
-  }
-
-  const password = decryptSecret(account.encryptedPassword);
-  const body = {
+function tokenScopeBody(account: ProviderAccount, password: string, scope: TokenScope) {
+  return {
     auth: {
       identity: {
         methods: ["password"],
@@ -54,23 +50,38 @@ export async function getSelectelToken(account: ProviderAccount, forceRefresh = 
           },
         },
       },
-      scope: { domain: { name: account.accountId } },
+      scope:
+        scope.type === "account"
+          ? { domain: { name: account.accountId } }
+          : { project: { name: scope.projectName, domain: { name: account.accountId } } },
     },
   };
+}
 
+export async function getSelectelAccountToken(account: ProviderAccount, forceRefresh = false) {
+  if (
+    !forceRefresh &&
+    account.encryptedIamToken &&
+    account.iamTokenExpiresAt &&
+    account.iamTokenExpiresAt > new Date(Date.now() + 60_000)
+  ) {
+    return decryptSecret(account.encryptedIamToken);
+  }
+
+  const password = decryptSecret(account.encryptedPassword);
   const response = await fetch(identityUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(tokenScopeBody(account, password, { type: "account" })),
   });
 
   if (!response.ok) {
-    throw new Error(`Selectel auth failed: ${await readError(response)}`);
+    throw new Error(`Selectel account auth failed: ${await readError(response)}`);
   }
 
   const token = response.headers.get("x-subject-token");
   if (!token) {
-    throw new Error("Selectel auth did not return X-Subject-Token");
+    throw new Error("Selectel account auth did not return X-Subject-Token");
   }
 
   await prisma.providerAccount.update({
@@ -84,8 +95,50 @@ export async function getSelectelToken(account: ProviderAccount, forceRefresh = 
   return token;
 }
 
-async function selectelFetch(account: ProviderAccount, path: string, init: RequestInit = {}, retry = true) {
-  const token = await getSelectelToken(account);
+export async function getSelectelProjectToken(account: ProviderAccount, projectName: string, forceRefresh = false) {
+  const cacheKey = `${account.id}:${projectName}`;
+  const cached = projectTokenCache.get(cacheKey);
+  if (!forceRefresh && cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached.token;
+  }
+
+  const password = decryptSecret(account.encryptedPassword);
+  const response = await fetch(identityUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tokenScopeBody(account, password, { type: "project", projectName })),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Selectel project auth failed for "${projectName}": ${await readError(response)}`);
+  }
+
+  const token = response.headers.get("x-subject-token");
+  if (!token) {
+    throw new Error(`Selectel project auth for "${projectName}" did not return X-Subject-Token`);
+  }
+
+  projectTokenCache.set(cacheKey, {
+    token,
+    expiresAt: Date.now() + 1000 * 60 * 60 * 23,
+  });
+
+  return token;
+}
+
+async function selectelFetch(
+  account: ProviderAccount,
+  path: string,
+  init: RequestInit = {},
+  options: { scope?: TokenScope; retry?: boolean } = {},
+) {
+  const scope = options.scope ?? { type: "account" };
+  const retry = options.retry ?? true;
+  const token =
+    scope.type === "account"
+      ? await getSelectelAccountToken(account)
+      : await getSelectelProjectToken(account, scope.projectName);
+
   const response = await fetch(`${vpcUrl}${path}`, {
     ...init,
     headers: {
@@ -96,7 +149,10 @@ async function selectelFetch(account: ProviderAccount, path: string, init: Reque
   });
 
   if (response.status === 401 && retry) {
-    const freshToken = await getSelectelToken(account, true);
+    const freshToken =
+      scope.type === "account"
+        ? await getSelectelAccountToken(account, true)
+        : await getSelectelProjectToken(account, scope.projectName, true);
     return fetch(`${vpcUrl}${path}`, {
       ...init,
       headers: {
@@ -163,6 +219,7 @@ export function extractProjectRegions(project: SelectelProjectDetails | null) {
 export async function allocateFloatingIp(input: {
   account: ProviderAccount;
   projectId: string;
+  projectName: string;
   region: string;
   requestedIp?: string;
 }) {
@@ -176,10 +233,16 @@ export async function allocateFloatingIp(input: {
     ],
   };
 
-  const response = await selectelFetch(input.account, `/floatingips/projects/${input.projectId}`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const response = await selectelFetch(
+    input.account,
+    `/floatingips/projects/${input.projectId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { scope: { type: "project", projectName: input.projectName } },
+  );
+
   if (!response.ok) {
     throw new Error(`Selectel floating IP create failed: ${await readError(response)}`);
   }
@@ -190,8 +253,17 @@ export async function allocateFloatingIp(input: {
   return payload.floatingip;
 }
 
-export async function releaseFloatingIp(account: ProviderAccount, floatingIpId: string) {
-  const response = await selectelFetch(account, `/floatingips/${floatingIpId}`, { method: "DELETE" });
+export async function releaseFloatingIp(input: {
+  account: ProviderAccount;
+  projectName: string;
+  floatingIpId: string;
+}) {
+  const response = await selectelFetch(
+    input.account,
+    `/floatingips/${input.floatingIpId}`,
+    { method: "DELETE" },
+    { scope: { type: "project", projectName: input.projectName } },
+  );
   if (!response.ok && response.status !== 404) {
     throw new Error(`Selectel floating IP delete failed: ${await readError(response)}`);
   }
