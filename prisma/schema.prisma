@@ -53,8 +53,19 @@ model ProjectBinding {
   url               String?
   createdAt         DateTime        @default(now())
   profiles          SearchProfile[]
+  regions           ProjectRegion[]
 
   @@unique([providerAccountId, externalProjectId])
+}
+
+model ProjectRegion {
+  id               String         @id @default(cuid())
+  projectBindingId String
+  projectBinding   ProjectBinding @relation(fields: [projectBindingId], references: [id], onDelete: Cascade)
+  name             String
+  createdAt        DateTime       @default(now())
+
+  @@unique([projectBindingId, name])
 }
 
 model SearchProfile {

@@ -55,7 +55,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className="h-9 w-full rounded-md border border-[var(--line)] bg-black/30 px-3 text-sm outline-none transition focus:border-[#f6c453]/60"
+      className="h-9 w-full rounded-md border border-[var(--line)] bg-[#090806] px-3 text-sm text-[#fff4d6] outline-none transition focus:border-[#f6c453]/60 [&_option]:bg-[#19150f] [&_option]:text-[#fff4d6] [&_option:disabled]:text-[#756c5c]"
       {...props}
     />
   );

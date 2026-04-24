@@ -11,6 +11,10 @@ type SelectelProject = {
   url?: string;
 };
 
+type SelectelProjectDetails = SelectelProject & {
+  quotas?: Record<string, Array<{ region?: string; zone?: string; value?: number; used?: number }>>;
+};
+
 export type SelectelFloatingIp = {
   id: string;
   floating_ip_address: string;
@@ -111,6 +115,31 @@ export async function listSelectelProjects(account: ProviderAccount) {
   }
   const payload = (await response.json()) as { projects?: SelectelProject[] };
   return payload.projects ?? [];
+}
+
+export async function getSelectelProjectDetails(account: ProviderAccount, projectId: string) {
+  const response = await selectelFetch(account, `/projects/${projectId}`);
+  if (!response.ok) {
+    throw new Error(`Selectel project details failed: ${await readError(response)}`);
+  }
+  const payload = (await response.json()) as { project?: SelectelProjectDetails };
+  return payload.project ?? null;
+}
+
+export function extractProjectRegions(project: SelectelProjectDetails | null) {
+  const regions = new Set<string>();
+  if (!project?.quotas) return [];
+
+  for (const quotaItems of Object.values(project.quotas)) {
+    if (!Array.isArray(quotaItems)) continue;
+    for (const quota of quotaItems) {
+      if (quota.region) {
+        regions.add(quota.region);
+      }
+    }
+  }
+
+  return [...regions].sort((a, b) => a.localeCompare(b));
 }
 
 export async function allocateFloatingIp(input: {

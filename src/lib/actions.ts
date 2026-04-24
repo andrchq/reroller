@@ -6,7 +6,7 @@ import { createSession, destroySession, hashPassword, requireUser, verifyPasswor
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { enqueueRun } from "@/lib/queue";
-import { listSelectelProjects } from "@/lib/selectel";
+import { extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
 import { splitLines } from "@/lib/utils";
 
 function requiredString(formData: FormData, key: string) {
@@ -76,7 +76,7 @@ export async function syncProjectsAction(formData: FormData) {
   const projects = await listSelectelProjects(account);
 
   for (const project of projects) {
-    await prisma.projectBinding.upsert({
+    const binding = await prisma.projectBinding.upsert({
       where: {
         providerAccountId_externalProjectId: {
           providerAccountId: account.id,
@@ -94,6 +94,16 @@ export async function syncProjectsAction(formData: FormData) {
         url: project.url,
       },
     });
+
+    const details = await getSelectelProjectDetails(account, project.id);
+    const regions = extractProjectRegions(details);
+    await prisma.projectRegion.deleteMany({ where: { projectBindingId: binding.id } });
+    if (regions.length > 0) {
+      await prisma.projectRegion.createMany({
+        data: regions.map((name) => ({ projectBindingId: binding.id, name })),
+        skipDuplicates: true,
+      });
+    }
   }
   revalidatePath("/accounts");
   revalidatePath("/profiles");
@@ -102,8 +112,15 @@ export async function syncProjectsAction(formData: FormData) {
 export async function createProfileAction(formData: FormData) {
   await requireUser();
   const projectBindingId = requiredString(formData, "projectBindingId");
-  const project = await prisma.projectBinding.findUnique({ where: { id: projectBindingId } });
+  const region = requiredString(formData, "region");
+  const project = await prisma.projectBinding.findUnique({
+    where: { id: projectBindingId },
+    include: { regions: true },
+  });
   if (!project) throw new Error("Project not found");
+  if (project.regions.length > 0 && !project.regions.some((item) => item.name === region)) {
+    throw new Error("Region is not available for selected project");
+  }
 
   const targets = splitLines(requiredString(formData, "targets"));
   if (targets.length === 0) throw new Error("At least one target IP is required");
@@ -113,7 +130,7 @@ export async function createProfileAction(formData: FormData) {
       name: requiredString(formData, "name"),
       providerAccountId: project.providerAccountId,
       projectBindingId: project.id,
-      region: requiredString(formData, "region"),
+      region,
       targets: { create: targets.map((value) => ({ value })) },
       rateLimit: {
         create: {
