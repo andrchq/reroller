@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSession, destroySession, hashPassword, requireUser, verifyPassword } from "@/lib/auth";
-import { encryptSecret } from "@/lib/crypto";
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { enqueueRun } from "@/lib/queue";
 import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
@@ -290,13 +290,19 @@ export async function stopProfileRunsAction(formData: FormData) {
 
 export async function saveTelegramAction(formData: FormData) {
   await requireUser();
-  const botToken = requiredString(formData, "botToken");
+  const savedConfig = await prisma.telegramConfig.findFirst({ orderBy: { updatedAt: "desc" } });
+  const botToken = String(formData.get("botToken") ?? "").trim();
+  const tokenToUse = botToken || (savedConfig ? decryptSecret(savedConfig.encryptedBotToken) : "");
   const chatId = requiredString(formData, "chatId");
   const messageThreadId = optionalString(formData, "messageThreadId");
 
+  if (!tokenToUse) {
+    redirect(`/settings?telegramError=${encodeURIComponent("Введите токен Telegram-бота.")}`);
+  }
+
   try {
     await sendTelegramDirect({
-      token: botToken,
+      token: tokenToUse,
       chatId,
       messageThreadId,
       text: buildTelegramTestMessage(),
@@ -309,7 +315,7 @@ export async function saveTelegramAction(formData: FormData) {
   await prisma.telegramConfig.deleteMany();
   await prisma.telegramConfig.create({
     data: {
-      encryptedBotToken: encryptSecret(botToken),
+      encryptedBotToken: encryptSecret(tokenToUse),
       chatId,
       messageThreadId,
     },

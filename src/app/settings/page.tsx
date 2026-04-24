@@ -31,7 +31,7 @@ export default async function SettingsPage({
           ) : null}
           <form action={saveTelegramAction} className="grid gap-3">
             <Field label="Токен бота">
-              <Input name="botToken" type="password" required placeholder={config ? "Введите новый токен для замены" : "123456:ABC..."} />
+              <Input name="botToken" type="password" required={!config} placeholder={config ? "Токен сохранен. Заполните только для замены" : "123456:ABC..."} />
             </Field>
             <Field label="ID чата или группы">
               <Input name="chatId" required defaultValue={config?.chatId ?? ""} placeholder="-1001234567890" />

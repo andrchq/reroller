@@ -14,6 +14,7 @@ const premiumEmoji = {
   alien: '<tg-emoji emoji-id="5370869711888194012">👾</tg-emoji>',
   demon: '<tg-emoji emoji-id="5372951839018850336">👹</tg-emoji>',
   eyes: '<tg-emoji emoji-id="5424885441100782420">👀</tg-emoji>',
+  calendar: '<tg-emoji emoji-id="5431897022456145283">📆</tg-emoji>',
 };
 
 function escapeHtml(value: string) {
@@ -57,7 +58,7 @@ export function buildFindingMessage(input: {
     `◽️ <b>IP:</b> <code>${escapeHtml(input.floatingIpAddress)}</code>`,
     `◽️ <b>ID Floating IP:</b> <code>${escapeHtml(input.floatingIpId)}</code>`,
     separator,
-    `◽️ <b>Время:</b> ${formatTelegramTime()}`,
+    `◽️ <b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
   ].join("\n");
 }
 
@@ -70,7 +71,7 @@ export function buildTelegramTestMessage() {
     "◽️ <b>Чат:</b> сообщение доставлено",
     "◽️ <b>Топик:</b> проверен, если был указан",
     separator,
-    `◽️ <b>Время:</b> ${formatTelegramTime()}`,
+    `◽️ <b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
   ].join("\n");
 }
 
