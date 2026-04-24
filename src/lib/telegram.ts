@@ -23,6 +23,21 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;");
 }
 
+function formatTelegramTime(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    " ",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
+}
+
 export function buildFindingMessage(input: {
   profileName: string;
   accountName: string;
@@ -42,7 +57,7 @@ export function buildFindingMessage(input: {
     `◽️ <b>IP:</b> <code>${escapeHtml(input.floatingIpAddress)}</code>`,
     `◽️ <b>ID Floating IP:</b> <code>${escapeHtml(input.floatingIpId)}</code>`,
     separator,
-    `◽️ <b>Время:</b> ${new Date().toISOString()}`,
+    `◽️ <b>Время:</b> ${formatTelegramTime()}`,
   ].join("\n");
 }
 
@@ -55,7 +70,7 @@ export function buildTelegramTestMessage() {
     "◽️ <b>Чат:</b> сообщение доставлено",
     "◽️ <b>Топик:</b> проверен, если был указан",
     separator,
-    `◽️ <b>Время:</b> ${new Date().toISOString()}`,
+    `◽️ <b>Время:</b> ${formatTelegramTime()}`,
   ].join("\n");
 }
 
