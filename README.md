@@ -114,6 +114,48 @@ Override deploy defaults when needed:
 sudo APP_DIR=/srv/reroller APP_PORT=4040 APP_BRANCH=main bash scripts/server-deploy.sh
 ```
 
+## Caddy Reverse Proxy
+
+Caddy can issue HTTPS certificates automatically and proxy the public domain to the local Next.js app on port `4040`.
+
+Before running this, make sure:
+
+- DNS `A` record for `ps.prsta.xyz` points to the server IPv4 address.
+- DNS `AAAA` record is either correct or absent.
+- Ports `80` and `443` are open in the server firewall and provider firewall.
+
+Install and configure Caddy:
+
+```bash
+cd /opt/reroller
+sudo DOMAIN=ps.prsta.xyz UPSTREAM=127.0.0.1:4040 bash scripts/setup-caddy.sh
+```
+
+Optional ACME email:
+
+```bash
+sudo DOMAIN=ps.prsta.xyz ACME_EMAIL=admin@prsta.xyz bash scripts/setup-caddy.sh
+```
+
+Check Caddy:
+
+```bash
+systemctl status caddy
+journalctl -u caddy -f
+```
+
+After Caddy is ready, set:
+
+```env
+NEXT_PUBLIC_APP_URL="https://ps.prsta.xyz"
+```
+
+Then restart the app:
+
+```bash
+sudo reroller restart
+```
+
 ## Selectel Flow
 
 The worker authenticates with Selectel IAM, creates a Floating IP for the selected project and region, compares the returned address with profile targets, keeps matched IPs, and deletes misses immediately.
