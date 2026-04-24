@@ -32,6 +32,55 @@ export type SelectelFloatingIp = {
   status: string;
 };
 
+function asRecord(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function pickString(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+export function normalizeFloatingIpPayload(payload: unknown): SelectelFloatingIp | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+
+  const candidates = [
+    root.floatingip,
+    root.floating_ip,
+    Array.isArray(root.floatingips) ? root.floatingips[0] : null,
+    Array.isArray(root.floating_ips) ? root.floating_ips[0] : null,
+    root,
+  ];
+
+  for (const candidate of candidates) {
+    const record = asRecord(candidate);
+    if (!record) continue;
+
+    const id = pickString(record, ["id", "uuid", "floatingip_id", "floating_ip_id"]);
+    const floatingIpAddress = pickString(record, ["floating_ip_address", "ip_address", "address", "ip"]);
+    if (!id || !floatingIpAddress) continue;
+
+    return {
+      id,
+      floating_ip_address: floatingIpAddress,
+      fixed_ip_address: pickString(record, ["fixed_ip_address"]),
+      project_id: pickString(record, ["project_id", "project"]),
+      region: pickString(record, ["region"]),
+      status: pickString(record, ["status"]) || "UNKNOWN",
+    };
+  }
+
+  return null;
+}
+
+function shortPayload(payload: unknown) {
+  return JSON.stringify(payload).slice(0, 700);
+}
+
 async function readError(response: Response) {
   const text = await response.text();
   return `${response.status} ${response.statusText}${text ? `: ${text}` : ""}`;
@@ -246,11 +295,12 @@ export async function allocateFloatingIp(input: {
   if (!response.ok) {
     throw new Error(`Selectel floating IP create failed: ${await readError(response)}`);
   }
-  const payload = (await response.json()) as { floatingip?: SelectelFloatingIp };
-  if (!payload.floatingip?.id || !payload.floatingip.floating_ip_address) {
-    throw new Error("Selectel floating IP create returned an unexpected payload");
+  const payload = await response.json();
+  const floatingIp = normalizeFloatingIpPayload(payload);
+  if (!floatingIp) {
+    throw new Error(`Selectel floating IP create returned an unexpected payload: ${shortPayload(payload)}`);
   }
-  return payload.floatingip;
+  return floatingIp;
 }
 
 export async function releaseFloatingIp(input: {

@@ -1,11 +1,13 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   await requireUser();
   const { id } = await params;
   const encoder = new TextEncoder();
-  let lastCreatedAt = new Date(0);
+  const after = new URL(request.url).searchParams.get("after");
+  let lastCreatedAt = after ? new Date(after) : new Date(0);
+  if (Number.isNaN(lastCreatedAt.getTime())) lastCreatedAt = new Date(0);
   let closed = false;
 
   const stream = new ReadableStream({

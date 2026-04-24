@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
-import { createProfileAction } from "@/lib/actions";
+import { createProfileAction, updateProfileAction } from "@/lib/actions";
 
 type ProjectOption = {
   id: string;
@@ -10,20 +10,42 @@ type ProjectOption = {
   regions: string[];
 };
 
-export function ProfileForm({ projects }: { projects: ProjectOption[] }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
+type ProfileDefaults = {
+  id: string;
+  name: string;
+  projectBindingId: string;
+  region: string;
+  targets: string;
+  requestsPerMinute: number;
+  minDelayMs: number;
+  burst: number;
+  cooldownAfterError: number;
+  maxAttempts: number;
+};
+
+export function ProfileForm({
+  projects,
+  profile,
+  framed = true,
+}: {
+  projects: ProjectOption[];
+  profile?: ProfileDefaults;
+  framed?: boolean;
+}) {
+  const [projectId, setProjectId] = useState(profile?.projectBindingId ?? projects[0]?.id ?? "");
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projectId, projects],
   );
   const regions = selectedProject?.regions ?? [];
-
-  return (
-    <Card>
-      <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Новый профиль</div>
-      <form action={createProfileAction} className="grid gap-3">
+  const action = profile ? updateProfileAction : createProfileAction;
+  const content = (
+    <>
+      <div className="mb-3 text-sm font-semibold text-[#fff4d6]">{profile ? "Редактирование профиля" : "Новый профиль"}</div>
+      <form action={action} className="grid gap-3">
+        {profile ? <input type="hidden" name="profileId" value={profile.id} /> : null}
         <Field label="Название">
-          <Input name="name" required placeholder="Пул ru-1" />
+          <Input name="name" required placeholder="Пул ru-1" defaultValue={profile?.name} />
         </Field>
         <Field label="Проект">
           <Select name="projectBindingId" required value={projectId} onChange={(event) => setProjectId(event.target.value)}>
@@ -36,7 +58,7 @@ export function ProfileForm({ projects }: { projects: ProjectOption[] }) {
           </Select>
         </Field>
         <Field label="Регион">
-          <Select name="region" required disabled={!selectedProject || regions.length === 0}>
+          <Select name="region" required disabled={!selectedProject || regions.length === 0} defaultValue={profile?.region}>
             {!selectedProject ? <option value="">Выберите проект</option> : null}
             {selectedProject && regions.length === 0 ? <option value="">Нет регионов после синхронизации</option> : null}
             {regions.map((region) => (
@@ -52,29 +74,32 @@ export function ProfileForm({ projects }: { projects: ProjectOption[] }) {
           </div>
         ) : null}
         <Field label="Целевые IP или CIDR, по одному в строке">
-          <Textarea name="targets" required placeholder={"203.0.113.10\n198.51.100.0/24"} />
+          <Textarea name="targets" required placeholder={"203.0.113.10\n198.51.100.0/24"} defaultValue={profile?.targets} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Запросов в минуту">
-            <Input name="requestsPerMinute" type="number" defaultValue={6} min={1} />
+            <Input name="requestsPerMinute" type="number" defaultValue={profile?.requestsPerMinute ?? 6} min={1} />
           </Field>
           <Field label="Мин. задержка, мс">
-            <Input name="minDelayMs" type="number" defaultValue={10000} min={1000} />
+            <Input name="minDelayMs" type="number" defaultValue={profile?.minDelayMs ?? 10000} min={1000} />
           </Field>
           <Field label="Пакет запросов">
-            <Input name="burst" type="number" defaultValue={1} min={1} />
+            <Input name="burst" type="number" defaultValue={profile?.burst ?? 1} min={1} />
           </Field>
           <Field label="Пауза после ошибки, мс">
-            <Input name="cooldownAfterError" type="number" defaultValue={60000} min={1000} />
+            <Input name="cooldownAfterError" type="number" defaultValue={profile?.cooldownAfterError ?? 60000} min={1000} />
           </Field>
           <Field label="Макс. попыток">
-            <Input name="maxAttempts" type="number" defaultValue={100} min={1} />
+            <Input name="maxAttempts" type="number" defaultValue={profile?.maxAttempts ?? 100} min={1} />
           </Field>
         </div>
         <Button type="submit" disabled={projects.length === 0 || regions.length === 0}>
-          Создать профиль
+          {profile ? "Сохранить профиль" : "Создать профиль"}
         </Button>
       </form>
-    </Card>
+    </>
   );
+
+  if (!framed) return <div className="rounded-md border border-[var(--line)] bg-black/20 p-3">{content}</div>;
+  return <Card>{content}</Card>;
 }

@@ -198,6 +198,62 @@ export async function createProfileAction(formData: FormData) {
   redirect("/profiles");
 }
 
+export async function updateProfileAction(formData: FormData) {
+  await requireUser();
+  const profileId = requiredString(formData, "profileId");
+  const projectBindingId = requiredString(formData, "projectBindingId");
+  const region = requiredString(formData, "region");
+  const project = await prisma.projectBinding.findUnique({
+    where: { id: projectBindingId },
+    include: { regions: true },
+  });
+  if (!project) throw new Error("Project not found");
+  if (project.regions.length > 0 && !project.regions.some((item) => item.name === region)) {
+    throw new Error("Region is not available for selected project");
+  }
+
+  const targets = splitLines(requiredString(formData, "targets"));
+  if (targets.length === 0) throw new Error("At least one target IP is required");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.searchProfile.update({
+      where: { id: profileId },
+      data: {
+        name: requiredString(formData, "name"),
+        providerAccountId: project.providerAccountId,
+        projectBindingId: project.id,
+        region,
+      },
+    });
+    await tx.targetIp.deleteMany({ where: { searchProfileId: profileId } });
+    await tx.targetIp.createMany({
+      data: targets.map((value) => ({ searchProfileId: profileId, value })),
+    });
+    await tx.rateLimitPolicy.upsert({
+      where: { searchProfileId: profileId },
+      create: {
+        searchProfileId: profileId,
+        requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
+        minDelayMs: optionalNumber(formData, "minDelayMs", 10_000),
+        burst: optionalNumber(formData, "burst", 1),
+        cooldownAfterError: optionalNumber(formData, "cooldownAfterError", 60_000),
+        maxAttempts: optionalNumber(formData, "maxAttempts", 100),
+      },
+      update: {
+        requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
+        minDelayMs: optionalNumber(formData, "minDelayMs", 10_000),
+        burst: optionalNumber(formData, "burst", 1),
+        cooldownAfterError: optionalNumber(formData, "cooldownAfterError", 60_000),
+        maxAttempts: optionalNumber(formData, "maxAttempts", 100),
+      },
+    });
+  });
+
+  revalidatePath("/profiles");
+  revalidatePath("/tasks");
+  redirect("/profiles");
+}
+
 export async function startProfileAction(formData: FormData) {
   await requireUser();
   const profileId = requiredString(formData, "profileId");

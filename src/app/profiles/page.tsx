@@ -1,6 +1,6 @@
+import { ProfileForm } from "@/components/profile-form";
 import { AppShell, PageHeader } from "@/components/shell";
 import { Badge, Button, Card } from "@/components/ui";
-import { ProfileForm } from "@/components/profile-form";
 import { startProfileAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -44,8 +44,11 @@ export default async function ProfilesPage() {
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {profile.targets.slice(0, 6).map((target) => (
-                        <span key={target.id} className="rounded bg-[#f6c453]/10 px-2 py-1 text-xs text-[#f6c453]">{target.value}</span>
+                        <span key={target.id} className="rounded bg-[#f6c453]/10 px-2 py-1 text-xs text-[#f6c453]">
+                          {target.value}
+                        </span>
                       ))}
+                      {profile.targets.length > 6 ? <span className="rounded bg-white/5 px-2 py-1 text-xs text-[var(--muted)]">+{profile.targets.length - 6}</span> : null}
                     </div>
                   </div>
                   <form action={startProfileAction}>
@@ -53,6 +56,27 @@ export default async function ProfilesPage() {
                     <Button type="submit">Запустить</Button>
                   </form>
                 </div>
+                <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-[#f6c453]">Редактировать профиль</summary>
+                  <div className="mt-3">
+                    <ProfileForm
+                      projects={projectOptions}
+                      framed={false}
+                      profile={{
+                        id: profile.id,
+                        name: profile.name,
+                        projectBindingId: profile.projectBindingId,
+                        region: profile.region,
+                        targets: profile.targets.map((target) => target.value).join("\n"),
+                        requestsPerMinute: profile.rateLimit?.requestsPerMinute ?? 6,
+                        minDelayMs: profile.rateLimit?.minDelayMs ?? 10000,
+                        burst: profile.rateLimit?.burst ?? 1,
+                        cooldownAfterError: profile.rateLimit?.cooldownAfterError ?? 60000,
+                        maxAttempts: profile.rateLimit?.maxAttempts ?? 100,
+                      }}
+                    />
+                  </div>
+                </details>
               </div>
             ))}
             {profiles.length === 0 ? <div className="text-sm text-[var(--muted)]">Сначала синхронизируйте проект и создайте профиль.</div> : null}
