@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${REROLLER_CONFIG:-/etc/reroller.conf}"
+if [[ -f "$CONFIG_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG_FILE"
+fi
+
+APP_DIR="${APP_DIR:-/opt/reroller}"
+APP_SERVICE="${APP_SERVICE:-reroller-app}"
+WORKER_SERVICE="${WORKER_SERVICE:-reroller-worker}"
+APP_BRANCH="${APP_BRANCH:-main}"
+
+cd "$APP_DIR"
+
+usage() {
+  cat <<USAGE
+Reroller server command
+
+Usage:
+  reroller start           Start app and worker
+  reroller stop            Stop app and worker
+  reroller restart         Restart app and worker
+  reroller status          Show systemd status
+  reroller logs            Follow app and worker logs
+  reroller logs-app        Follow app logs
+  reroller logs-worker     Follow worker logs
+  reroller update          Pull GitHub, install deps, migrate, build, restart
+  reroller pull            Pull GitHub only
+  reroller migrate         Apply Prisma migrations
+  reroller build           Generate Prisma client and build Next.js
+  reroller env             Print active config path and app dir
+USAGE
+}
+
+require_systemd() {
+  command -v systemctl >/dev/null 2>&1 || {
+    echo "systemctl is required" >&2
+    exit 1
+  }
+}
+
+run_update() {
+  echo "Updating Reroller from GitHub branch: ${APP_BRANCH}"
+  git fetch origin "$APP_BRANCH"
+  git reset --hard "origin/${APP_BRANCH}"
+  npm ci
+  npm run prisma:generate
+  npx prisma migrate deploy
+  npm run build
+  require_systemd
+  systemctl restart "$APP_SERVICE" "$WORKER_SERVICE"
+  systemctl --no-pager --lines=20 status "$APP_SERVICE" "$WORKER_SERVICE" || true
+}
+
+case "${1:-}" in
+  start)
+    require_systemd
+    systemctl start "$APP_SERVICE" "$WORKER_SERVICE"
+    ;;
+  stop)
+    require_systemd
+    systemctl stop "$WORKER_SERVICE" "$APP_SERVICE"
+    ;;
+  restart)
+    require_systemd
+    systemctl restart "$APP_SERVICE" "$WORKER_SERVICE"
+    ;;
+  status)
+    require_systemd
+    systemctl --no-pager status "$APP_SERVICE" "$WORKER_SERVICE"
+    ;;
+  logs)
+    require_systemd
+    journalctl -u "$APP_SERVICE" -u "$WORKER_SERVICE" -f
+    ;;
+  logs-app)
+    require_systemd
+    journalctl -u "$APP_SERVICE" -f
+    ;;
+  logs-worker)
+    require_systemd
+    journalctl -u "$WORKER_SERVICE" -f
+    ;;
+  update)
+    run_update
+    ;;
+  pull)
+    git fetch origin "$APP_BRANCH"
+    git reset --hard "origin/${APP_BRANCH}"
+    ;;
+  migrate)
+    npm run prisma:generate
+    npx prisma migrate deploy
+    ;;
+  build)
+    npm run prisma:generate
+    npm run build
+    ;;
+  env)
+    echo "CONFIG_FILE=${CONFIG_FILE}"
+    echo "APP_DIR=${APP_DIR}"
+    echo "APP_SERVICE=${APP_SERVICE}"
+    echo "WORKER_SERVICE=${WORKER_SERVICE}"
+    echo "APP_BRANCH=${APP_BRANCH}"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    echo "Unknown command: $1" >&2
+    usage
+    exit 1
+    ;;
+esac
