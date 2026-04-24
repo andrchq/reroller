@@ -20,6 +20,20 @@ function optionalNumber(formData: FormData, key: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
+function rateLimitInput(formData: FormData) {
+  const minDelaySeconds = optionalNumber(formData, "minDelaySeconds", 10);
+  const maxDelaySeconds = Math.max(minDelaySeconds, optionalNumber(formData, "maxDelaySeconds", 30));
+
+  return {
+    requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
+    minDelaySeconds,
+    maxDelaySeconds,
+    errorDelaySeconds: optionalNumber(formData, "errorDelaySeconds", 60),
+    maxRuntimeSeconds: optionalNumber(formData, "maxRuntimeSeconds", 3600),
+    maxFindings: optionalNumber(formData, "maxFindings", 1),
+  };
+}
+
 function optionalString(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   return value || null;
@@ -184,13 +198,7 @@ export async function createProfileAction(formData: FormData) {
       region,
       targets: { create: targets.map((value) => ({ value })) },
       rateLimit: {
-        create: {
-          requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
-          minDelayMs: optionalNumber(formData, "minDelayMs", 10_000),
-          burst: optionalNumber(formData, "burst", 1),
-          cooldownAfterError: optionalNumber(formData, "cooldownAfterError", 60_000),
-          maxAttempts: optionalNumber(formData, "maxAttempts", 100),
-        },
+        create: rateLimitInput(formData),
       },
     },
   });
@@ -233,19 +241,9 @@ export async function updateProfileAction(formData: FormData) {
       where: { searchProfileId: profileId },
       create: {
         searchProfileId: profileId,
-        requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
-        minDelayMs: optionalNumber(formData, "minDelayMs", 10_000),
-        burst: optionalNumber(formData, "burst", 1),
-        cooldownAfterError: optionalNumber(formData, "cooldownAfterError", 60_000),
-        maxAttempts: optionalNumber(formData, "maxAttempts", 100),
+        ...rateLimitInput(formData),
       },
-      update: {
-        requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
-        minDelayMs: optionalNumber(formData, "minDelayMs", 10_000),
-        burst: optionalNumber(formData, "burst", 1),
-        cooldownAfterError: optionalNumber(formData, "cooldownAfterError", 60_000),
-        maxAttempts: optionalNumber(formData, "maxAttempts", 100),
-      },
+      update: rateLimitInput(formData),
     });
   });
 

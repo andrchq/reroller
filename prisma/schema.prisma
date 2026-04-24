@@ -98,10 +98,11 @@ model RateLimitPolicy {
   searchProfileId    String        @unique
   searchProfile      SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
   requestsPerMinute  Int           @default(6)
-  minDelayMs         Int           @default(10000)
-  burst              Int           @default(1)
-  cooldownAfterError Int           @default(60000)
-  maxAttempts        Int           @default(100)
+  minDelaySeconds    Int           @default(10)
+  maxDelaySeconds    Int           @default(30)
+  errorDelaySeconds  Int           @default(60)
+  maxRuntimeSeconds  Int           @default(3600)
+  maxFindings        Int           @default(1)
 }
 
 model Run {

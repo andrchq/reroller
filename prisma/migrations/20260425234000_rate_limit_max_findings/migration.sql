@@ -1,0 +1,1 @@
+ALTER TABLE "RateLimitPolicy" ADD COLUMN "maxFindings" INTEGER NOT NULL DEFAULT 1;

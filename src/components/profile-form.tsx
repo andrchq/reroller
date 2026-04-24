@@ -17,10 +17,11 @@ type ProfileDefaults = {
   region: string;
   targets: string;
   requestsPerMinute: number;
-  minDelayMs: number;
-  burst: number;
-  cooldownAfterError: number;
-  maxAttempts: number;
+  minDelaySeconds: number;
+  maxDelaySeconds: number;
+  errorDelaySeconds: number;
+  maxRuntimeSeconds: number;
+  maxFindings: number;
 };
 
 export function ProfileForm({
@@ -80,17 +81,20 @@ export function ProfileForm({
           <Field label="Запросов в минуту">
             <Input name="requestsPerMinute" type="number" defaultValue={profile?.requestsPerMinute ?? 6} min={1} />
           </Field>
-          <Field label="Мин. задержка, мс">
-            <Input name="minDelayMs" type="number" defaultValue={profile?.minDelayMs ?? 10000} min={1000} />
+          <Field label="Мин. задержка, сек">
+            <Input name="minDelaySeconds" type="number" defaultValue={profile?.minDelaySeconds ?? 10} min={1} />
           </Field>
-          <Field label="Пакет запросов">
-            <Input name="burst" type="number" defaultValue={profile?.burst ?? 1} min={1} />
+          <Field label="Макс. задержка, сек">
+            <Input name="maxDelaySeconds" type="number" defaultValue={profile?.maxDelaySeconds ?? 30} min={1} />
           </Field>
-          <Field label="Пауза после ошибки, мс">
-            <Input name="cooldownAfterError" type="number" defaultValue={profile?.cooldownAfterError ?? 60000} min={1000} />
+          <Field label="Пауза после ошибки, сек">
+            <Input name="errorDelaySeconds" type="number" defaultValue={profile?.errorDelaySeconds ?? 60} min={1} />
           </Field>
-          <Field label="Макс. попыток">
-            <Input name="maxAttempts" type="number" defaultValue={profile?.maxAttempts ?? 100} min={1} />
+          <Field label="Время работы, сек">
+            <Input name="maxRuntimeSeconds" type="number" defaultValue={profile?.maxRuntimeSeconds ?? 3600} min={60} />
+          </Field>
+          <Field label="Лимит найденных IP">
+            <Input name="maxFindings" type="number" defaultValue={profile?.maxFindings ?? 1} min={1} />
           </Field>
         </div>
         <Button type="submit" disabled={projects.length === 0 || regions.length === 0}>

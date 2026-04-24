@@ -69,10 +69,11 @@ export default async function ProfilesPage() {
                         region: profile.region,
                         targets: profile.targets.map((target) => target.value).join("\n"),
                         requestsPerMinute: profile.rateLimit?.requestsPerMinute ?? 6,
-                        minDelayMs: profile.rateLimit?.minDelayMs ?? 10000,
-                        burst: profile.rateLimit?.burst ?? 1,
-                        cooldownAfterError: profile.rateLimit?.cooldownAfterError ?? 60000,
-                        maxAttempts: profile.rateLimit?.maxAttempts ?? 100,
+                        minDelaySeconds: profile.rateLimit?.minDelaySeconds ?? 10,
+                        maxDelaySeconds: profile.rateLimit?.maxDelaySeconds ?? 30,
+                        errorDelaySeconds: profile.rateLimit?.errorDelaySeconds ?? 60,
+                        maxRuntimeSeconds: profile.rateLimit?.maxRuntimeSeconds ?? 3600,
+                        maxFindings: profile.rateLimit?.maxFindings ?? 1,
                       }}
                     />
                   </div>

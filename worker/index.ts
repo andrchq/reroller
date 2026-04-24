@@ -7,6 +7,25 @@ import { appendRunLog } from "@/lib/run-log";
 import { buildFindingMessage, sendTelegramMessage } from "@/lib/telegram";
 import { wait } from "@/lib/utils";
 
+function randomInt(min: number, max: number) {
+  const safeMin = Math.ceil(Math.min(min, max));
+  const safeMax = Math.floor(Math.max(min, max));
+  return Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
+}
+
+function randomFloat(min: number, max: number) {
+  return Math.random() * (max - min) + min;
+}
+
+function remainingMs(deadline: number) {
+  return Math.max(0, deadline - Date.now());
+}
+
+async function waitWithDeadline(ms: number, deadline: number) {
+  const delay = Math.min(ms, remainingMs(deadline));
+  if (delay > 0) await wait(delay);
+}
+
 async function processRun(runId: string) {
   const run = await prisma.run.findUnique({
     where: { id: runId },
@@ -27,21 +46,45 @@ async function processRun(runId: string) {
   const profile = run.searchProfile;
   const rateLimit = profile.rateLimit;
   const targets = profile.targets.map((target) => target.value);
-  const maxAttempts = rateLimit?.maxAttempts ?? 100;
-  const minDelayMs = rateLimit?.minDelayMs ?? 10_000;
-  const cooldownAfterError = rateLimit?.cooldownAfterError ?? 60_000;
+  const requestsPerMinute = Math.max(1, rateLimit?.requestsPerMinute ?? 6);
+  const minDelaySeconds = Math.max(1, rateLimit?.minDelaySeconds ?? 10);
+  const rateDelaySeconds = Math.ceil(60 / requestsPerMinute);
+  const delayMinSeconds = Math.max(minDelaySeconds, rateDelaySeconds);
+  const delayMaxSeconds = Math.max(delayMinSeconds, rateLimit?.maxDelaySeconds ?? 30);
+  const errorDelaySeconds = Math.max(1, rateLimit?.errorDelaySeconds ?? 60);
+  const maxRuntimeSeconds = Math.max(60, rateLimit?.maxRuntimeSeconds ?? 3600);
+  const maxFindings = Math.max(1, rateLimit?.maxFindings ?? 1);
+  const deadline = Date.now() + maxRuntimeSeconds * 1000;
+  const requestTimestamps: number[] = [];
+  let consecutiveErrors = 0;
+  let foundCount = await prisma.finding.count({ where: { runId } });
 
   await prisma.run.update({
     where: { id: runId },
     data: { status: "RUNNING", startedAt: new Date() },
   });
-  await appendRunLog(runId, "INFO", `Запуск профиля "${profile.name}"`);
+  await appendRunLog(
+    runId,
+    "INFO",
+    `Запуск профиля "${profile.name}". Время работы: ${maxRuntimeSeconds} сек. Задержка: ${delayMinSeconds}-${delayMaxSeconds} сек. Лимит: ${requestsPerMinute}/мин. Лимит находок: ${maxFindings}.`,
+  );
 
-  for (let attempt = run.attempts + 1; attempt <= maxAttempts; attempt += 1) {
+  for (let attempt = run.attempts + 1; Date.now() < deadline && foundCount < maxFindings; attempt += 1) {
     const current = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
     if (!current || current.status === "STOPPED") {
       await appendRunLog(runId, "WARN", "Запуск остановлен оператором");
       return;
+    }
+
+    const now = Date.now();
+    while (requestTimestamps.length > 0 && now - requestTimestamps[0] >= 60_000) {
+      requestTimestamps.shift();
+    }
+    if (requestTimestamps.length >= requestsPerMinute) {
+      const waitMs = requestTimestamps[0] + 60_000 - now + randomInt(250, 1250);
+      await appendRunLog(runId, "INFO", `Лимит ${requestsPerMinute}/мин: пауза ${Math.ceil(waitMs / 1000)} сек.`);
+      await waitWithDeadline(waitMs, deadline);
+      continue;
     }
 
     await prisma.run.update({ where: { id: runId }, data: { attempts: attempt } });
@@ -49,6 +92,7 @@ async function processRun(runId: string) {
     try {
       const requestedIp = targets.find((target) => !target.includes("/"));
       await appendRunLog(runId, "INFO", `Попытка ${attempt}: запрос Floating IP в ${profile.region}`);
+      requestTimestamps.push(Date.now());
       const floatingIp = await allocateFloatingIp({
         account: profile.providerAccount,
         projectId: profile.projectBinding.externalProjectId,
@@ -57,6 +101,7 @@ async function processRun(runId: string) {
         requestedIp,
       });
 
+      consecutiveErrors = 0;
       const address = floatingIp.floating_ip_address;
       const matchedTarget = findMatchedTarget(targets, address);
       if (matchedTarget) {
@@ -71,7 +116,8 @@ async function processRun(runId: string) {
             raw: floatingIp,
           },
         });
-        await appendRunLog(runId, "SUCCESS", `Найден подходящий IP ${address} для цели ${matchedTarget}`);
+        foundCount += 1;
+        await appendRunLog(runId, "SUCCESS", `Найден подходящий IP ${address} для цели ${matchedTarget}. Находок: ${foundCount}/${maxFindings}`);
 
         const sent = await sendTelegramMessage(
           buildFindingMessage({
@@ -93,11 +139,19 @@ async function processRun(runId: string) {
           await appendRunLog(runId, "WARN", "Telegram не настроен или уведомление не отправлено");
         }
 
-        await prisma.run.update({
-          where: { id: runId },
-          data: { status: "COMPLETED", stoppedAt: new Date() },
-        });
-        return;
+        if (foundCount >= maxFindings) {
+          await appendRunLog(runId, "SUCCESS", `Достигнут лимит найденных IP: ${maxFindings}`);
+          await prisma.run.update({
+            where: { id: runId },
+            data: { status: "COMPLETED", stoppedAt: new Date() },
+          });
+          return;
+        }
+
+        const delaySeconds = randomInt(delayMinSeconds, delayMaxSeconds);
+        await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);
+        await waitWithDeadline(delaySeconds * 1000, deadline);
+        continue;
       }
 
       await appendRunLog(runId, "INFO", `IP ${address} не совпал, удаляю Floating IP`);
@@ -106,16 +160,36 @@ async function processRun(runId: string) {
         projectName: profile.projectBinding.name,
         floatingIpId: floatingIp.id,
       });
+
+      const delaySeconds = randomInt(delayMinSeconds, delayMaxSeconds);
+      await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);
+      await waitWithDeadline(delaySeconds * 1000, deadline);
     } catch (error) {
+      consecutiveErrors += 1;
       const message = error instanceof Error ? error.message : "Unknown worker error";
       await appendRunLog(runId, "ERROR", message);
-      await wait(cooldownAfterError);
-    }
 
-    await wait(minDelayMs);
+      const multiplier = consecutiveErrors === 1 ? 1 : Math.pow(randomFloat(2, 3), consecutiveErrors - 1);
+      const delaySeconds = Math.ceil(errorDelaySeconds * multiplier);
+      await appendRunLog(
+        runId,
+        "WARN",
+        `Пауза после ошибки: ${delaySeconds} сек. Ошибок подряд: ${consecutiveErrors}.`,
+      );
+      await waitWithDeadline(delaySeconds * 1000, deadline);
+    }
   }
 
-  await appendRunLog(runId, "WARN", "Достигнут лимит попыток профиля");
+  if (foundCount >= maxFindings) {
+    await appendRunLog(runId, "SUCCESS", `Достигнут лимит найденных IP: ${maxFindings}`);
+    await prisma.run.update({
+      where: { id: runId },
+      data: { status: "COMPLETED", stoppedAt: new Date() },
+    });
+    return;
+  }
+
+  await appendRunLog(runId, "WARN", "Истекло заданное время работы профиля");
   await prisma.run.update({
     where: { id: runId },
     data: { status: "FAILED", stoppedAt: new Date() },
