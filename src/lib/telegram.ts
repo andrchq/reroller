@@ -33,25 +33,28 @@ export function buildFindingMessage(input: {
 }) {
   return [
     `<b>${premiumEmoji.alien} Reroller: найден подходящий IP</b>`,
-    separator,
     `◽️ <b>Профиль:</b> ${escapeHtml(input.profileName)}`,
     `◽️ <b>Аккаунт:</b> ${escapeHtml(input.accountName)}`,
+    separator,
     `◽️ <b>Проект:</b> ${escapeHtml(input.projectName)}`,
     `◽️ <b>Регион:</b> ${escapeHtml(input.region)}`,
-    `◽️ <b>IP:</b> ${escapeHtml(input.floatingIpAddress)}`,
-    `◽️ <b>ID Floating IP:</b> ${escapeHtml(input.floatingIpId)}`,
-    `◽️ <b>Время:</b> ${new Date().toISOString()}`,
     separator,
+    `◽️ <b>IP:</b> <code>${escapeHtml(input.floatingIpAddress)}</code>`,
+    `◽️ <b>ID Floating IP:</b> <code>${escapeHtml(input.floatingIpId)}</code>`,
+    separator,
+    `◽️ <b>Время:</b> ${new Date().toISOString()}`,
   ].join("\n");
 }
 
 export function buildTelegramTestMessage() {
   return [
     `<b>${premiumEmoji.eyes} Reroller: проверка Telegram</b>`,
+    "◽️ <b>Статус:</b> бот подключен",
     separator,
-    "◽️ <b>Статус:</b> бот, чат и топик настроены корректно.",
+    "◽️ <b>Чат:</b> сообщение доставлено",
+    "◽️ <b>Топик:</b> проверен, если был указан",
+    separator,
     `◽️ <b>Время:</b> ${new Date().toISOString()}`,
-    separator,
   ].join("\n");
 }
 
