@@ -50,7 +50,17 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
 ENV_CREATED=0
 if [[ ! -f "$APP_DIR/.env" ]]; then
-  cp "$APP_DIR/.env.example" "$APP_DIR/.env"
+  if [[ -f "$APP_DIR/.env.example" ]]; then
+    cp "$APP_DIR/.env.example" "$APP_DIR/.env"
+  else
+    cat > "$APP_DIR/.env" <<EOF
+DATABASE_URL="postgresql://reroller:change-me@localhost:5432/reroller?schema=public"
+REDIS_URL="redis://localhost:6379"
+APP_SECRET_KEY="change-me"
+AUTH_SECRET="change-me"
+NEXT_PUBLIC_APP_URL="http://localhost:${APP_PORT}"
+EOF
+  fi
   sed -i "s|NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=\"http://localhost:${APP_PORT}\"|" "$APP_DIR/.env"
   if [[ -n "${DEPLOY_DATABASE_URL:-}" ]]; then
     sed -i "s|DATABASE_URL=.*|DATABASE_URL=\"${DEPLOY_DATABASE_URL}\"|" "$APP_DIR/.env"
