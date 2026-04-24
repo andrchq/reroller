@@ -15,6 +15,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       include: {
         providerAccount: true,
         projectBinding: true,
+        selectedRegions: true,
         runs: {
           orderBy: { createdAt: "desc" },
           take: 5,
@@ -41,13 +42,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 const lastRun = profile.runs[0] ?? null;
                 const activeRun = profile.runs.find((run) => ["QUEUED", "RUNNING"].includes(run.status));
                 const isActive = Boolean(activeRun);
+                const regions = profile.selectedRegions.length > 0 ? profile.selectedRegions.map((region) => region.name).join(", ") : profile.region;
                 return (
                   <div key={profile.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3">
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div>
                         <div className="font-medium text-[#fff4d6]">{profile.name}</div>
                         <div className="mt-1 text-xs text-[var(--muted)]">
-                          {profile.providerAccount.name} / {profile.projectBinding.name} / {profile.region}
+                          {profile.providerAccount.name} / {profile.projectBinding.name} / {regions}
                         </div>
                       </div>
                       {lastRun ? (

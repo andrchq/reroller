@@ -21,7 +21,7 @@ type TokenScope =
 
 const projectTokenCache = new Map<string, { token: string; expiresAt: number }>();
 
-export const defaultSelectelRegions = ["ru-1", "ru-2", "ru-3", "ru-7", "ru-8"];
+export const defaultSelectelRegions = ["ru-2", "ru-6", "ru-7", "gis-1", "ru-1", "ru-3", "ru-9", "gis-2"];
 
 export type SelectelFloatingIp = {
   id: string;

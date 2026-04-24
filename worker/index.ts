@@ -34,6 +34,7 @@ async function processRun(runId: string) {
         include: {
           providerAccount: true,
           projectBinding: true,
+          selectedRegions: true,
           targets: true,
           rateLimit: true,
         },
@@ -46,6 +47,7 @@ async function processRun(runId: string) {
   const profile = run.searchProfile;
   const rateLimit = profile.rateLimit;
   const targets = profile.targets.map((target) => target.value);
+  const regions = profile.selectedRegions.length > 0 ? profile.selectedRegions.map((region) => region.name) : [profile.region];
   const requestsPerMinute = Math.max(1, rateLimit?.requestsPerMinute ?? 6);
   const minDelaySeconds = Math.max(1, rateLimit?.minDelaySeconds ?? 10);
   const rateDelaySeconds = Math.ceil(60 / requestsPerMinute);
@@ -66,7 +68,7 @@ async function processRun(runId: string) {
   await appendRunLog(
     runId,
     "INFO",
-    `Запуск профиля "${profile.name}". Время работы: ${maxRuntimeSeconds} сек. Задержка: ${delayMinSeconds}-${delayMaxSeconds} сек. Лимит: ${requestsPerMinute}/мин. Лимит находок: ${maxFindings}.`,
+    `Запуск профиля "${profile.name}". Зоны: ${regions.join(", ")}. Время работы: ${maxRuntimeSeconds} сек. Задержка: ${delayMinSeconds}-${delayMaxSeconds} сек. Лимит: ${requestsPerMinute}/мин. Лимит находок: ${maxFindings}.`,
   );
 
   for (let attempt = run.attempts + 1; Date.now() < deadline && foundCount < maxFindings; attempt += 1) {
@@ -91,13 +93,14 @@ async function processRun(runId: string) {
 
     try {
       const requestedIp = targets.find((target) => !target.includes("/"));
-      await appendRunLog(runId, "INFO", `Попытка ${attempt}: запрос Floating IP в ${profile.region}`);
+      const selectedRegion = regions[randomInt(0, regions.length - 1)];
+      await appendRunLog(runId, "INFO", `Попытка ${attempt}: запрос Floating IP в ${selectedRegion}`);
       requestTimestamps.push(Date.now());
       const floatingIp = await allocateFloatingIp({
         account: profile.providerAccount,
         projectId: profile.projectBinding.externalProjectId,
         projectName: profile.projectBinding.name,
-        region: profile.region,
+        region: selectedRegion,
         requestedIp,
       });
 
@@ -112,7 +115,7 @@ async function processRun(runId: string) {
             floatingIpId: floatingIp.id,
             floatingIpAddress: address,
             projectId: profile.projectBinding.externalProjectId,
-            region: profile.region,
+            region: selectedRegion,
             raw: floatingIp,
           },
         });
@@ -124,7 +127,7 @@ async function processRun(runId: string) {
             profileName: profile.name,
             accountName: profile.providerAccount.name,
             projectName: profile.projectBinding.name,
-            region: profile.region,
+            region: selectedRegion,
             floatingIpAddress: address,
             floatingIpId: floatingIp.id,
           }),

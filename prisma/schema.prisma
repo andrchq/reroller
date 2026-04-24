@@ -80,9 +80,20 @@ model SearchProfile {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   targets           TargetIp[]
+  selectedRegions   SearchProfileRegion[]
   rateLimit         RateLimitPolicy?
   runs              Run[]
   findings          Finding[]
+}
+
+model SearchProfileRegion {
+  id              String        @id @default(cuid())
+  searchProfileId String
+  searchProfile   SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
+  name            String
+  createdAt       DateTime      @default(now())
+
+  @@unique([searchProfileId, name])
 }
 
 model TargetIp {

@@ -40,6 +40,19 @@ function optionalString(formData: FormData, key: string) {
   return value || null;
 }
 
+function selectedRegionsInput(formData: FormData) {
+  return [...new Set(formData.getAll("regions").map((value) => String(value).trim()).filter(Boolean))];
+}
+
+function assertProjectRegions(project: { regions: { name: string }[] }, regions: string[]) {
+  if (regions.length === 0) throw new Error("At least one zone is required");
+  if (project.regions.length > 0) {
+    const available = new Set(project.regions.map((item) => item.name));
+    const missing = regions.filter((region) => !available.has(region));
+    if (missing.length > 0) throw new Error(`Zones are not available for selected project: ${missing.join(", ")}`);
+  }
+}
+
 function formatSelectelSyncError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -178,15 +191,13 @@ export async function syncProjectsAction(formData: FormData) {
 export async function createProfileAction(formData: FormData) {
   await requireUser();
   const projectBindingId = requiredString(formData, "projectBindingId");
-  const region = requiredString(formData, "region");
+  const regions = selectedRegionsInput(formData);
   const project = await prisma.projectBinding.findUnique({
     where: { id: projectBindingId },
     include: { regions: true },
   });
   if (!project) throw new Error("Project not found");
-  if (project.regions.length > 0 && !project.regions.some((item) => item.name === region)) {
-    throw new Error("Region is not available for selected project");
-  }
+  assertProjectRegions(project, regions);
 
   const targets = splitLines(requiredString(formData, "targets"));
   if (targets.length === 0) throw new Error("At least one target IP is required");
@@ -196,7 +207,8 @@ export async function createProfileAction(formData: FormData) {
       name: requiredString(formData, "name"),
       providerAccountId: project.providerAccountId,
       projectBindingId: project.id,
-      region,
+      region: regions[0],
+      selectedRegions: { create: regions.map((name) => ({ name })) },
       targets: { create: targets.map((value) => ({ value })) },
       rateLimit: {
         create: rateLimitInput(formData),
@@ -211,15 +223,13 @@ export async function updateProfileAction(formData: FormData) {
   await requireUser();
   const profileId = requiredString(formData, "profileId");
   const projectBindingId = requiredString(formData, "projectBindingId");
-  const region = requiredString(formData, "region");
+  const regions = selectedRegionsInput(formData);
   const project = await prisma.projectBinding.findUnique({
     where: { id: projectBindingId },
     include: { regions: true },
   });
   if (!project) throw new Error("Project not found");
-  if (project.regions.length > 0 && !project.regions.some((item) => item.name === region)) {
-    throw new Error("Region is not available for selected project");
-  }
+  assertProjectRegions(project, regions);
 
   const targets = splitLines(requiredString(formData, "targets"));
   if (targets.length === 0) throw new Error("At least one target IP is required");
@@ -231,8 +241,12 @@ export async function updateProfileAction(formData: FormData) {
         name: requiredString(formData, "name"),
         providerAccountId: project.providerAccountId,
         projectBindingId: project.id,
-        region,
+        region: regions[0],
       },
+    });
+    await tx.searchProfileRegion.deleteMany({ where: { searchProfileId: profileId } });
+    await tx.searchProfileRegion.createMany({
+      data: regions.map((name) => ({ searchProfileId: profileId, name })),
     });
     await tx.targetIp.deleteMany({ where: { searchProfileId: profileId } });
     await tx.targetIp.createMany({

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { createProfileAction, updateProfileAction } from "@/lib/actions";
+import { selectelZoneGroups } from "@/lib/selectel-zones";
 
 type ProjectOption = {
   id: string;
@@ -15,6 +16,7 @@ type ProfileDefaults = {
   name: string;
   projectBindingId: string;
   region: string;
+  regions: string[];
   targets: string;
   requestsPerMinute: number;
   minDelaySeconds: number;
@@ -39,6 +41,10 @@ export function ProfileForm({
     [projectId, projects],
   );
   const regions = selectedProject?.regions ?? [];
+  const [selectedRegions, setSelectedRegions] = useState(
+    profile?.regions.length ? profile.regions : profile?.region ? [profile.region] : regions[0] ? [regions[0]] : [],
+  );
+  const regionGroups = selectelZoneGroups(regions);
   const action = profile ? updateProfileAction : createProfileAction;
   const content = (
     <>
@@ -49,7 +55,17 @@ export function ProfileForm({
           <Input name="name" required placeholder="Пул ru-1" defaultValue={profile?.name} />
         </Field>
         <Field label="Проект">
-          <Select name="projectBindingId" required value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+          <Select
+            name="projectBindingId"
+            required
+            value={projectId}
+            onChange={(event) => {
+              const nextProjectId = event.target.value;
+              const nextProject = projects.find((project) => project.id === nextProjectId);
+              setProjectId(nextProjectId);
+              setSelectedRegions(nextProject?.regions[0] ? [nextProject.regions[0]] : []);
+            }}
+          >
             {projects.length === 0 ? <option value="">Сначала синхронизируйте проекты</option> : null}
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
@@ -58,20 +74,46 @@ export function ProfileForm({
             ))}
           </Select>
         </Field>
-        <Field label="Регион">
-          <Select name="region" required disabled={!selectedProject || regions.length === 0} defaultValue={profile?.region}>
-            {!selectedProject ? <option value="">Выберите проект</option> : null}
-            {selectedProject && regions.length === 0 ? <option value="">Нет регионов после синхронизации</option> : null}
-            {regions.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
+        <div className="grid gap-2 text-sm text-[#cfc2a4]">
+          <div>Зоны</div>
+          <div className="grid gap-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
+            {!selectedProject ? <div className="text-xs text-[var(--muted)]">Выберите проект</div> : null}
+            {selectedProject && regions.length === 0 ? <div className="text-xs text-[var(--muted)]">Нет зон после синхронизации</div> : null}
+            {Object.entries(regionGroups).map(([city, zones]) => (
+              <div key={city} className="grid gap-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{city}</div>
+                <div className="grid gap-1.5">
+                  {zones.map((zone) => (
+                    <label key={zone.name} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[#f6c453]/10">
+                      <input
+                        type="checkbox"
+                        name="regions"
+                        value={zone.name}
+                        checked={selectedRegions.includes(zone.name)}
+                        onChange={(event) => {
+                          setSelectedRegions((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, zone.name])]
+                              : current.filter((item) => item !== zone.name),
+                          );
+                        }}
+                        className="h-4 w-4 accent-[#f6c453]"
+                      />
+                      <span className="font-semibold text-[#fff4d6]">{zone.name}</span>
+                      <span className="text-xs text-[var(--muted)]">{zone.label}</span>
+                      {zone.badge ? (
+                        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-200">{zone.badge}</span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
-          </Select>
-        </Field>
+          </div>
+        </div>
         {selectedProject && regions.length === 0 ? (
           <div className="rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">
-            Для проекта нет сохраненных регионов. Нажмите «Синхронизировать» на странице аккаунтов. Если регионы не появятся, проверьте роль сервисного пользователя: нужна `vpc.admin` на проект.
+            Для проекта нет сохраненных зон. Нажмите «Синхронизировать» на странице аккаунтов. Если зоны не появятся, проверьте роль сервисного пользователя: нужна `vpc.admin` на проект.
           </div>
         ) : null}
         <Field label="Целевые IP или CIDR, по одному в строке">
@@ -97,7 +139,7 @@ export function ProfileForm({
             <Input name="maxFindings" type="number" defaultValue={profile?.maxFindings ?? 1} min={1} />
           </Field>
         </div>
-        <Button type="submit" disabled={projects.length === 0 || regions.length === 0}>
+        <Button type="submit" disabled={projects.length === 0 || regions.length === 0 || selectedRegions.length === 0}>
           {profile ? "Сохранить профиль" : "Создать профиль"}
         </Button>
       </form>
