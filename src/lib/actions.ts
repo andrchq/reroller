@@ -1,7 +1,7 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createSession, destroySession, hashPassword, requireUser, verifyPassword } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +23,20 @@ function optionalNumber(formData: FormData, key: string, fallback: number) {
 function optionalString(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   return value || null;
+}
+
+function formatSelectelSyncError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes("policy_does_not_allow_this_request") || message.includes("403 Forbidden")) {
+    return "Selectel отказал в доступе. Проверьте, что сервисному пользователю выдана роль vpc.admin в области доступа «Проекты» на нужный проект.";
+  }
+
+  if (message.includes("401") || message.toLowerCase().includes("auth")) {
+    return "Не удалось авторизоваться в Selectel. Проверьте ID аккаунта, имя и пароль сервисного пользователя.";
+  }
+
+  return message || "Неизвестная ошибка синхронизации.";
 }
 
 export async function loginAction(formData: FormData) {
@@ -73,14 +87,14 @@ export async function syncProjectsAction(formData: FormData) {
   const accountId = requiredString(formData, "accountDbId");
   const account = await prisma.providerAccount.findUnique({ where: { id: accountId } });
   if (!account) {
-    return { ok: false, message: "Аккаунт не найден." };
+    return { ok: false, title: "Ошибка синхронизации", message: "Аккаунт не найден.", details: "" };
   }
 
   try {
     const projects = await listSelectelProjects(account);
     let syncedProjects = 0;
     let syncedRegions = 0;
-    const warnings: string[] = [];
+    const notes = new Set<string>();
 
     for (const project of projects) {
       const binding = await prisma.projectBinding.upsert({
@@ -108,13 +122,16 @@ export async function syncProjectsAction(formData: FormData) {
         const details = await getSelectelProjectDetails(account, project.id);
         regions = extractProjectRegions(details);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "неизвестная ошибка";
-        warnings.push(`${project.name}: не удалось получить регионы из квот (${message})`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("policy_does_not_allow_this_request") || message.includes("403 Forbidden")) {
+          notes.add("Selectel не разрешил читать квоты проекта, поэтому использован стандартный список регионов.");
+        } else {
+          notes.add(`Не удалось прочитать квоты проекта «${project.name}», поэтому использован стандартный список регионов.`);
+        }
       }
 
       if (regions.length === 0) {
         regions = defaultSelectelRegions;
-        warnings.push(`${project.name}: использован стандартный список регионов Selectel`);
       }
 
       await prisma.projectRegion.deleteMany({ where: { projectBindingId: binding.id } });
@@ -129,12 +146,16 @@ export async function syncProjectsAction(formData: FormData) {
     revalidatePath("/profiles");
     return {
       ok: true,
-      message: `Синхронизировано проектов: ${syncedProjects}, регионов: ${syncedRegions}.${warnings.length ? ` ${warnings.join(" ")}` : ""}`,
+      title: "Синхронизация завершена",
+      message: `Проектов: ${syncedProjects}. Регионов: ${syncedRegions}.`,
+      details: [...notes].join(" "),
     };
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : "Неизвестная ошибка синхронизации.",
+      title: "Ошибка синхронизации",
+      message: formatSelectelSyncError(error),
+      details: "Проекты и регионы не обновлены.",
     };
   }
 }

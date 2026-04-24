@@ -4,12 +4,19 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui";
 import { syncProjectsAction } from "@/lib/actions";
 
+type SyncMessage = {
+  ok: boolean;
+  title: string;
+  message: string;
+  details?: string;
+};
+
 export function SyncProjectsButton({ accountId }: { accountId: string }) {
   const [isPending, startTransition] = useTransition();
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<SyncMessage | null>(null);
 
   return (
-    <div className="grid justify-items-end gap-2">
+    <div className="grid min-w-64 justify-items-end gap-2">
       <Button
         type="button"
         disabled={isPending}
@@ -19,15 +26,23 @@ export function SyncProjectsButton({ accountId }: { accountId: string }) {
           setMessage(null);
           startTransition(async () => {
             const result = await syncProjectsAction(formData);
-            setMessage({ ok: result.ok, text: result.message });
+            setMessage(result);
           });
         }}
       >
         {isPending ? "Синхронизация..." : "Синхронизировать"}
       </Button>
       {message ? (
-        <div className={message.ok ? "max-w-72 text-right text-xs text-emerald-200" : "max-w-72 text-right text-xs text-red-200"}>
-          {message.text}
+        <div
+          className={
+            message.ok
+              ? "w-full rounded-md border border-emerald-400/25 bg-emerald-400/10 p-3 text-left text-xs text-emerald-100"
+              : "w-full rounded-md border border-red-400/25 bg-red-400/10 p-3 text-left text-xs text-red-100"
+          }
+        >
+          <div className="mb-1 font-semibold">{message.title}</div>
+          <div className="leading-5">{message.message}</div>
+          {message.details ? <div className="mt-2 leading-5 opacity-80">{message.details}</div> : null}
         </div>
       ) : null}
     </div>
