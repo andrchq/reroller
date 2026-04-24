@@ -9,6 +9,7 @@
     "worker": "tsx worker/index.ts",
     "lint": "eslint",
     "test": "node --import tsx --test tests/*.test.ts",
+    "admin:reset": "tsx scripts/reset-admin.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"

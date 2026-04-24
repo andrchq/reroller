@@ -102,6 +102,14 @@ reroller stop
 reroller start
 ```
 
+Reset the panel login and password:
+
+```bash
+sudo reroller reset-admin admin 'new-strong-password'
+```
+
+The login form uses a plain login name, not email.
+
 Update from GitHub, install dependencies, apply Prisma migrations, build, and restart:
 
 ```bash

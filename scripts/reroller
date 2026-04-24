@@ -30,7 +30,11 @@ Usage:
   reroller pull            Pull GitHub only
   reroller migrate         Apply Prisma migrations
   reroller build           Generate Prisma client and build Next.js
+  reroller reset-admin     Reset admin login and password
   reroller env             Print active config path and app dir
+
+Reset admin:
+  reroller reset-admin <login> <password>
 USAGE
 }
 
@@ -97,6 +101,15 @@ case "${1:-}" in
   build)
     npm run prisma:generate
     npm run build
+    ;;
+  reset-admin)
+    if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+      echo "Usage: reroller reset-admin <login> <password>" >&2
+      exit 1
+    fi
+    npm run admin:reset -- "$2" "$3"
+    require_systemd
+    systemctl restart "$APP_SERVICE"
     ;;
   env)
     echo "CONFIG_FILE=${CONFIG_FILE}"

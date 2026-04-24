@@ -18,10 +18,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             {hasUsers ? "Войдите в приватную панель." : "Создайте первого администратора."}
           </p>
         </div>
-        {params.error ? <div className="mb-4 rounded-md border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">Неверная почта или пароль.</div> : null}
+        {params.error ? <div className="mb-4 rounded-md border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">Неверный логин или пароль.</div> : null}
         <form action={hasUsers ? loginAction : createInitialAdminAction} className="grid gap-4">
-          <Field label="Почта">
-            <Input name="email" type="email" autoComplete="email" required />
+          <Field label="Логин">
+            <Input name="login" type="text" autoComplete="username" required />
           </Field>
           <Field label="Пароль">
             <Input name="password" type="password" autoComplete={hasUsers ? "current-password" : "new-password"} required minLength={8} />

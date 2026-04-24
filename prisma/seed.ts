@@ -3,19 +3,19 @@ import { hashPassword } from "../src/lib/auth";
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
-  const email = process.env.ADMIN_EMAIL;
+  const login = process.env.ADMIN_LOGIN;
   const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password) {
-    console.log("ADMIN_EMAIL and ADMIN_PASSWORD are not set, skipping seed.");
+  if (!login || !password) {
+    console.log("ADMIN_LOGIN and ADMIN_PASSWORD are not set, skipping seed.");
     return;
   }
 
   await prisma.user.upsert({
-    where: { email },
-    create: { email, passwordHash: await hashPassword(password) },
-    update: {},
+    where: { login },
+    create: { login, passwordHash: await hashPassword(password) },
+    update: { passwordHash: await hashPassword(password) },
   });
-  console.log(`Admin user ready: ${email}`);
+  console.log(`Admin user ready: ${login}`);
 }
 
 main()

@@ -26,9 +26,9 @@ function optionalString(formData: FormData, key: string) {
 }
 
 export async function loginAction(formData: FormData) {
-  const email = requiredString(formData, "email").toLowerCase();
+  const login = requiredString(formData, "login").toLowerCase();
   const password = requiredString(formData, "password");
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { login } });
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     redirect("/login?error=1");
   }
@@ -45,10 +45,10 @@ export async function createInitialAdminAction(formData: FormData) {
   const users = await prisma.user.count();
   if (users > 0) redirect("/login");
 
-  const email = requiredString(formData, "email").toLowerCase();
+  const login = requiredString(formData, "login").toLowerCase();
   const password = requiredString(formData, "password");
   const user = await prisma.user.create({
-    data: { email, passwordHash: await hashPassword(password) },
+    data: { login, passwordHash: await hashPassword(password) },
   });
   await createSession(user.id);
   redirect("/");
