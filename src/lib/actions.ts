@@ -7,6 +7,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { enqueueRun } from "@/lib/queue";
 import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
+import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
 import { splitLines } from "@/lib/utils";
 
 function requiredString(formData: FormData, key: string) {
@@ -289,14 +290,30 @@ export async function stopProfileRunsAction(formData: FormData) {
 
 export async function saveTelegramAction(formData: FormData) {
   await requireUser();
+  const botToken = requiredString(formData, "botToken");
+  const chatId = requiredString(formData, "chatId");
+  const messageThreadId = optionalString(formData, "messageThreadId");
+
+  try {
+    await sendTelegramDirect({
+      token: botToken,
+      chatId,
+      messageThreadId,
+      text: buildTelegramTestMessage(),
+    });
+  } catch (error) {
+    const message = encodeURIComponent(error instanceof Error ? error.message : "Неизвестная ошибка Telegram");
+    redirect(`/settings?telegramError=${message}`);
+  }
+
   await prisma.telegramConfig.deleteMany();
   await prisma.telegramConfig.create({
     data: {
-      encryptedBotToken: encryptSecret(requiredString(formData, "botToken")),
-      chatId: requiredString(formData, "chatId"),
-      messageThreadId: optionalString(formData, "messageThreadId"),
+      encryptedBotToken: encryptSecret(botToken),
+      chatId,
+      messageThreadId,
     },
   });
   revalidatePath("/settings");
-  redirect("/settings");
+  redirect("/settings?telegramSaved=1");
 }
