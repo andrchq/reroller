@@ -1,5 +1,5 @@
 import { AppShell, PageHeader } from "@/components/shell";
-import { Button, Card, Field, Input } from "@/components/ui";
+import { Button, Card, Field, InfoTip, Input } from "@/components/ui";
 import { createAccountAction, syncProjectsAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +14,7 @@ export default async function AccountsPage() {
   return (
     <AppShell>
       <PageHeader title="Аккаунты" description="Учетные данные Selectel и синхронизация проектов." />
-      <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
+      <div className="grid gap-4 xl:grid-cols-[1fr_24rem_22rem]">
         <Card>
           <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Список аккаунтов</div>
           <div className="grid gap-3">
@@ -36,8 +36,14 @@ export default async function AccountsPage() {
             {accounts.length === 0 ? <div className="text-sm text-[var(--muted)]">Аккаунтов пока нет.</div> : null}
           </div>
         </Card>
+
         <Card>
-          <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Добавить Selectel</div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-[#fff4d6]">Добавить Selectel</div>
+            <InfoTip label="Какой доступ нужен">
+              Создайте сервисного пользователя в Selectel и выдайте ему роль <b>vpc.admin</b> в области доступа <b>Проект</b> на тот проект, где нужно подбирать публичные IP.
+            </InfoTip>
+          </div>
           <form action={createAccountAction} className="grid gap-3">
             <Field label="Название">
               <Input name="name" required placeholder="Основной Selectel" />
@@ -54,7 +60,51 @@ export default async function AccountsPage() {
             <Button type="submit">Сохранить аккаунт</Button>
           </form>
         </Card>
+
+        <Card>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-[#fff4d6]">Подсказка по Selectel</div>
+            <InfoTip label="Где создать пользователя">
+              В панели Selectel откройте управление доступом, создайте сервисного пользователя, затем в настройках доступа добавьте разрешение на проект.
+            </InfoTip>
+          </div>
+          <div className="grid gap-3 text-sm text-[#cfc2a4]">
+            <HelpItem
+              title="1. Создайте сервисного пользователя"
+              text="В Selectel перейдите в управление доступом и создайте сервисного пользователя. В Reroller укажите его имя и пароль."
+            />
+            <HelpItem
+              title="2. Выберите область доступа"
+              text="В разрешении выберите область доступа «Проекты» и конкретный проект, где будут резервироваться IP."
+            />
+            <HelpItem
+              title="3. Назначьте роль"
+              text="Для работы с публичными IP нужна роль vpc.admin. Она дает создание и удаление публичных IP в выбранном проекте."
+            />
+            <HelpItem
+              title="4. Синхронизируйте проекты"
+              text="После сохранения аккаунта нажмите «Синхронизировать», затем создайте профиль поиска на странице «Профили»."
+            />
+            <a
+              href="https://docs.selectel.ru/access-control/role-reference/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-medium text-[#f6c453] hover:underline"
+            >
+              Открыть справочник ролей Selectel
+            </a>
+          </div>
+        </Card>
       </div>
     </AppShell>
+  );
+}
+
+function HelpItem({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-md border border-[var(--line)] bg-black/20 p-3">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#f6c453]">{title}</div>
+      <div className="text-sm leading-5 text-[#cfc2a4]">{text}</div>
+    </div>
   );
 }

@@ -84,3 +84,20 @@ export function Badge({ children, tone = "default" }: { children: React.ReactNod
     </span>
   );
 }
+
+export function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <span
+        aria-label={label}
+        tabIndex={0}
+        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[#f6c453]/40 bg-[#f6c453]/10 text-xs font-semibold text-[#f6c453] outline-none transition hover:bg-[#f6c453]/20 focus:bg-[#f6c453]/20"
+      >
+        i
+      </span>
+      <span className="pointer-events-none absolute right-0 top-7 z-20 hidden w-80 rounded-md border border-[var(--line)] bg-[#19150f] p-3 text-left text-xs leading-5 text-[#f7f0df] shadow-2xl shadow-black/40 group-hover:block group-focus-within:block">
+        {children}
+      </span>
+    </span>
+  );
+}
