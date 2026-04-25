@@ -47,7 +47,7 @@ export default async function TasksPage({
       orderBy: { createdAt: "desc" },
       skip: historySkip,
       take: historyTake,
-      include: { searchProfile: true, logs: { orderBy: { createdAt: "desc" }, take: 40 } },
+      include: { searchProfile: true, logs: { orderBy: { createdAt: "asc" } } },
     }),
     prisma.run.count(),
   ]);
@@ -56,7 +56,7 @@ export default async function TasksPage({
     (params.run
       ? await prisma.run.findUnique({
           where: { id: params.run },
-          include: { searchProfile: true, logs: { orderBy: { createdAt: "desc" }, take: 40 } },
+          include: { searchProfile: true, logs: { orderBy: { createdAt: "asc" } } },
         })
       : null) ??
     runs[0] ??
@@ -177,7 +177,7 @@ export default async function TasksPage({
               <LiveRunLogs
                 key={selected.id}
                 runId={selected.id}
-                initialLogs={[...selected.logs].reverse().map((log) => ({
+                initialLogs={selected.logs.map((log) => ({
                   id: log.id,
                   level: log.level,
                   message: log.message,

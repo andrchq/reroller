@@ -25,7 +25,12 @@ function levelClass(level: string) {
 export function LiveRunLogs({ runId, initialLogs }: { runId: string; initialLogs: LiveLog[] }) {
   const [logs, setLogs] = useState(initialLogs);
   const seenIds = useRef(new Set(initialLogs.map((log) => log.id)));
+  const boxRef = useRef<HTMLDivElement>(null);
   const lastCreatedAt = useMemo(() => initialLogs.at(-1)?.createdAt ?? "", [initialLogs]);
+
+  useEffect(() => {
+    boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
+  }, [runId]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -37,13 +42,19 @@ export function LiveRunLogs({ runId, initialLogs }: { runId: string; initialLogs
       if (seenIds.current.has(log.id)) return;
       seenIds.current.add(log.id);
       setLogs((current) => [...current, log]);
+      requestAnimationFrame(() => {
+        const box = boxRef.current;
+        if (!box) return;
+        const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+        if (nearBottom) box.scrollTop = box.scrollHeight;
+      });
     };
 
     return () => source.close();
   }, [runId, lastCreatedAt]);
 
   return (
-    <div className="h-[38rem] overflow-auto rounded-md bg-black/40 p-3 font-mono text-xs">
+    <div ref={boxRef} className="h-[38rem] overflow-auto rounded-md bg-black/40 p-3 font-mono text-xs">
       {logs.map((log) => (
         <div key={log.id} className="mb-1 grid grid-cols-[6rem_6rem_1fr] gap-2">
           <span className="text-[var(--muted)]">{new Date(log.createdAt).toLocaleTimeString("ru-RU")}</span>

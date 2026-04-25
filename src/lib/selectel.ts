@@ -32,6 +32,20 @@ export type SelectelFloatingIp = {
   status: string;
 };
 
+export class SelectelApiError extends Error {
+  status: number;
+  code?: string;
+  region?: string;
+
+  constructor(message: string, input: { status: number; code?: string; region?: string }) {
+    super(message);
+    this.name = "SelectelApiError";
+    this.status = input.status;
+    this.code = input.code;
+    this.region = input.region;
+  }
+}
+
 function asRecord(value: unknown) {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
@@ -84,6 +98,39 @@ function shortPayload(payload: unknown) {
 async function readError(response: Response) {
   const text = await response.text();
   return `${response.status} ${response.statusText}${text ? `: ${text}` : ""}`;
+}
+
+async function buildSelectelError(response: Response, prefix: string) {
+  const text = await response.text();
+  let code: string | undefined;
+  let region: string | undefined;
+  let detail = text;
+
+  if (text) {
+    try {
+      const payload = JSON.parse(text) as {
+        error?: string;
+        message?: string;
+        quotas?: Record<string, Array<{ region?: string | null; zone?: string | null; value?: number; used?: number }>>;
+      };
+      code = payload.error;
+      const quota = payload.quotas ? Object.values(payload.quotas).flat()[0] : null;
+      region = quota?.region ?? undefined;
+      if (payload.error === "quota_exceeded" && quota) {
+        detail = `превышена квота Floating IP${quota.region ? ` в зоне ${quota.region}` : ""}: используется ${quota.used ?? "?"} из ${quota.value ?? "?"}`;
+      } else {
+        detail = payload.message || payload.error || text;
+      }
+    } catch {
+      detail = text;
+    }
+  }
+
+  return new SelectelApiError(`${prefix}: ${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`, {
+    status: response.status,
+    code,
+    region,
+  });
 }
 
 function tokenScopeBody(account: ProviderAccount, password: string, scope: TokenScope) {
@@ -293,7 +340,7 @@ export async function allocateFloatingIp(input: {
   );
 
   if (!response.ok) {
-    throw new Error(`Selectel floating IP create failed: ${await readError(response)}`);
+    throw await buildSelectelError(response, "Selectel floating IP create failed");
   }
   const payload = await response.json();
   const floatingIp = normalizeFloatingIpPayload(payload);

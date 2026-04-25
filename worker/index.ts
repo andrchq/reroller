@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import { allocateFloatingIp, releaseFloatingIp } from "@/lib/selectel";
+import { allocateFloatingIp, releaseFloatingIp, SelectelApiError } from "@/lib/selectel";
 import { findMatchedTarget } from "@/lib/ip-matcher";
 import { prisma } from "@/lib/prisma";
 import { createRedisConnection, runQueueName, type RunJob } from "@/lib/queue";
@@ -58,6 +58,7 @@ async function processRun(runId: string) {
   const maxFindings = Math.max(1, rateLimit?.maxFindings ?? 1);
   const deadline = Date.now() + maxRuntimeSeconds * 1000;
   const requestTimestamps: number[] = [];
+  const regionCooldownUntil = new Map<string, number>();
   let consecutiveErrors = 0;
   let foundCount = await prisma.finding.count({ where: { runId } });
 
@@ -89,11 +90,20 @@ async function processRun(runId: string) {
       continue;
     }
 
+    const availableRegions = regions.filter((region) => (regionCooldownUntil.get(region) ?? 0) <= Date.now());
+    if (availableRegions.length === 0) {
+      const nextAvailableAt = Math.min(...regions.map((region) => regionCooldownUntil.get(region) ?? Date.now()));
+      const waitMs = Math.max(1_000, nextAvailableAt - Date.now());
+      await appendRunLog(runId, "WARN", `Все выбранные зоны временно недоступны по квотам. Пауза ${Math.ceil(waitMs / 1000)} сек.`);
+      await waitWithDeadline(waitMs, deadline);
+      continue;
+    }
+
     await prisma.run.update({ where: { id: runId }, data: { attempts: attempt } });
+    const selectedRegion = availableRegions[randomInt(0, availableRegions.length - 1)];
 
     try {
       const requestedIp = targets.find((target) => !target.includes("/"));
-      const selectedRegion = regions[randomInt(0, regions.length - 1)];
       await appendRunLog(runId, "INFO", `Попытка ${attempt}: запрос Floating IP в ${selectedRegion}`);
       requestTimestamps.push(Date.now());
       const floatingIp = await allocateFloatingIp({
@@ -168,6 +178,12 @@ async function processRun(runId: string) {
       await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);
       await waitWithDeadline(delaySeconds * 1000, deadline);
     } catch (error) {
+      if (error instanceof SelectelApiError && error.code === "quota_exceeded") {
+        const quotaRegion = error.region ?? selectedRegion;
+        regionCooldownUntil.set(quotaRegion, Math.min(deadline, Date.now() + 15 * 60 * 1000));
+        await appendRunLog(runId, "WARN", `Квота Floating IP исчерпана в зоне ${quotaRegion}. Зона исключена из выбора на 15 минут.`);
+      }
+
       consecutiveErrors += 1;
       const message = error instanceof Error ? error.message : "Unknown worker error";
       await appendRunLog(runId, "ERROR", message);
