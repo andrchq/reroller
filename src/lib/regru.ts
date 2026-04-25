@@ -22,13 +22,22 @@ type RegRuReglet = {
   status?: string;
 };
 
-type RegRuIp = {
-  id?: number;
-  ip: string;
-  region_slug?: string;
-  reglet_id?: number | string | null;
-  status?: string;
+type RegRuPlan = {
+  slug?: string;
+  name?: string;
+  price?: string | number;
+  price_month?: string | number;
+  disk?: number;
+  memory?: number;
+  vcpus?: number;
+};
+
+type RegRuImage = {
+  slug?: string;
+  name?: string;
+  distribution?: string;
   type?: string;
+  region_slug?: string;
 };
 
 export type RegRuServerProject = {
@@ -46,6 +55,13 @@ export type RegRuFloatingIp = {
   status: string;
 };
 
+export const regRuCreateRegions = [
+  { id: "openstack-msk1", name: "Reg.ru Москва", url: undefined, regions: ["openstack-msk1"] },
+  { id: "openstack-spb1", name: "Reg.ru Санкт-Петербург", url: undefined, regions: ["openstack-spb1"] },
+  { id: "openstack-msk2", name: "Reg.ru Москва-2", url: undefined, regions: ["openstack-msk2"] },
+  { id: "openstack-sam1", name: "Reg.ru Самара", url: undefined, regions: ["openstack-sam1"] },
+] satisfies RegRuServerProject[];
+
 export class RegRuApiError extends Error {
   status: number;
   code?: string;
@@ -60,9 +76,9 @@ export class RegRuApiError extends Error {
     const message = isAuth
       ? "Reg.ru: API token не принят. Проверьте токен CloudVPS API в панели Рег.облака и запустите профиль снова."
       : isBalance
-        ? "Reg.ru: недостаточно баланса для создания дополнительного IP. Пополните баланс и запустите профиль снова."
+        ? "Reg.ru: недостаточно баланса для создания временного сервера. Пополните баланс и запустите профиль снова."
         : isLimit
-          ? "Reg.ru: достигнут лимит дополнительных IP на сервере или аккаунте. Освободите IP или увеличьте лимит."
+          ? "Reg.ru: достигнут лимит серверов или сетевых ресурсов на аккаунте. Освободите ресурсы или увеличьте лимит."
           : `Reg.ru ${operation} failed: ${formatRegRuError(details)}`;
 
     super(message);
@@ -81,9 +97,7 @@ function formatRegRuError(details: RegRuErrorDetails) {
 
 async function readRegRuError(response: Response): Promise<RegRuErrorDetails> {
   const text = await response.text();
-  if (!text) {
-    return { status: response.status, statusText: response.statusText, raw: "" };
-  }
+  if (!text) return { status: response.status, statusText: response.statusText, raw: "" };
 
   try {
     const payload = JSON.parse(text) as {
@@ -125,6 +139,11 @@ async function regRuFetch(account: ProviderAccount, path: string, init: RequestI
   });
 }
 
+function numericPrice(value: unknown) {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+
 export function normalizeRegRuServer(reglet: RegRuReglet): RegRuServerProject | null {
   if (!reglet.id || !reglet.region_slug) return null;
   if (reglet.archived_at || reglet.status === "archive") return null;
@@ -137,29 +156,77 @@ export function normalizeRegRuServer(reglet: RegRuReglet): RegRuServerProject | 
   };
 }
 
-export function normalizeRegRuFloatingIp(ip: RegRuIp): RegRuFloatingIp | null {
-  if (!ip.ip) return null;
+export function normalizeRegRuRegletIp(reglet: RegRuReglet): RegRuFloatingIp | null {
+  if (!reglet.id || !reglet.ip) return null;
   return {
-    id: ip.ip,
-    floating_ip_address: ip.ip,
-    project_id: ip.reglet_id ? String(ip.reglet_id) : "",
-    region: ip.region_slug ?? "",
-    status: ip.status ?? "active",
+    id: String(reglet.id),
+    floating_ip_address: reglet.ip,
+    project_id: String(reglet.id),
+    region: reglet.region_slug ?? "",
+    status: reglet.status ?? "new",
   };
 }
 
-export async function listRegRuServers(account: ProviderAccount) {
-  const response = await regRuFetch(account, "/v1/reglets");
-  if (!response.ok) throw await createRegRuApiError("servers list", response);
-  const payload = (await response.json()) as { reglets?: RegRuReglet[] };
-  return (payload.reglets ?? []).map(normalizeRegRuServer).filter((item): item is RegRuServerProject => Boolean(item));
+export async function listRegRuCreateRegions() {
+  return regRuCreateRegions;
 }
 
-async function listRegRuIps(account: ProviderAccount, regletId: string) {
-  const response = await regRuFetch(account, `/v1/ips?reglet_id=${encodeURIComponent(regletId)}`);
-  if (!response.ok) throw await createRegRuApiError("IP list", response);
-  const payload = (await response.json()) as { ips?: RegRuIp[] };
-  return (payload.ips ?? []).filter((ip) => ip.type !== "ipv6");
+export async function validateRegRuAccount(account: ProviderAccount) {
+  await listRegRuPlans(account, "openstack-msk1");
+}
+
+async function listRegRuPlans(account: ProviderAccount, region: string) {
+  const response = await regRuFetch(account, `/v2/plans?region=${encodeURIComponent(region)}&page=1&items_per_page=100&unit=hour`);
+  if (!response.ok) throw await createRegRuApiError("plans list", response);
+  const payload = (await response.json()) as { plans?: RegRuPlan[] };
+  return payload.plans ?? [];
+}
+
+async function listRegRuImages(account: ProviderAccount, region: string) {
+  const response = await regRuFetch(
+    account,
+    `/v2/images?type=distribution&region=${encodeURIComponent(region)}&page=1&items_per_page=100`,
+  );
+  if (!response.ok) throw await createRegRuApiError("images list", response);
+  const payload = (await response.json()) as { images?: RegRuImage[] };
+  return payload.images ?? [];
+}
+
+function selectSmallestPlan(plans: RegRuPlan[]) {
+  const available = plans.filter((plan) => plan.slug);
+  available.sort((a, b) => {
+    const byPrice = numericPrice(a.price) - numericPrice(b.price);
+    if (byPrice !== 0) return byPrice;
+    const byCpu = (a.vcpus ?? 999) - (b.vcpus ?? 999);
+    if (byCpu !== 0) return byCpu;
+    const byRam = (a.memory ?? 999999) - (b.memory ?? 999999);
+    if (byRam !== 0) return byRam;
+    return (a.disk ?? 999999) - (b.disk ?? 999999);
+  });
+  return available.find((plan) => plan.slug?.includes("hp-c1-m1-d10")) ?? available[0] ?? null;
+}
+
+function selectUbuntuImage(images: RegRuImage[]) {
+  const available = images.filter((image) => image.slug);
+  return (
+    available.find((image) => image.slug?.includes("ubuntu-24-04") || image.name?.toLowerCase().includes("ubuntu 24.04")) ??
+    available.find((image) => image.slug?.includes("ubuntu-22-04") || image.name?.toLowerCase().includes("ubuntu 22.04")) ??
+    available.find((image) => image.slug?.includes("ubuntu") || image.name?.toLowerCase().includes("ubuntu")) ??
+    available[0] ??
+    null
+  );
+}
+
+async function getRegRuServer(account: ProviderAccount, serverId: string) {
+  const response = await regRuFetch(account, `/v1/reglets/${encodeURIComponent(serverId)}`);
+  if (!response.ok) throw await createRegRuApiError("server details", response);
+  const payload = (await response.json()) as { reglet?: RegRuReglet };
+  return payload.reglet ?? null;
+}
+
+async function deleteRegRuServer(account: ProviderAccount, serverId: string) {
+  const response = await regRuFetch(account, `/v1/reglets/${encodeURIComponent(serverId)}`, { method: "DELETE" });
+  if (!response.ok && response.status !== 404) throw await createRegRuApiError("server delete", response);
 }
 
 export async function allocateRegRuFloatingIp(input: {
@@ -167,36 +234,46 @@ export async function allocateRegRuFloatingIp(input: {
   regletId: string;
   region: string;
 }) {
-  const before = new Set((await listRegRuIps(input.account, input.regletId)).map((item) => item.ip));
-  const response = await regRuFetch(input.account, "/v1/ips", {
+  const plans = await listRegRuPlans(input.account, input.region);
+  const plan = selectSmallestPlan(plans);
+  if (!plan?.slug) throw new Error(`Reg.ru: в регионе ${input.region} не найден доступный почасовой тариф для временного сервера.`);
+
+  const images = await listRegRuImages(input.account, input.region);
+  const image = selectUbuntuImage(images);
+  if (!image?.slug) throw new Error(`Reg.ru: в регионе ${input.region} не найден образ Ubuntu для временного сервера.`);
+
+  const response = await regRuFetch(input.account, "/v1/reglets", {
     method: "POST",
     body: JSON.stringify({
-      reglet_id: Number(input.regletId),
-      ipv4_count: 1,
+      name: `reroller-${Date.now()}`,
+      size: plan.slug,
+      image: image.slug,
+      backups: false,
     }),
   });
 
-  if (!response.ok) throw await createRegRuApiError("IP create", response);
+  if (!response.ok) throw await createRegRuApiError("server create", response);
+  const payload = (await response.json()) as { reglet?: RegRuReglet };
+  const created = payload.reglet;
+  if (!created?.id) throw new Error(`Reg.ru server create returned an unexpected payload: ${JSON.stringify(payload).slice(0, 700)}`);
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    await wait(attempt === 0 ? 2_000 : 5_000);
-    const after = await listRegRuIps(input.account, input.regletId);
-    const created = after.find((item) => item.ip && !before.has(item.ip));
-    if (created) {
-      const floatingIp = normalizeRegRuFloatingIp({ ...created, reglet_id: input.regletId, region_slug: created.region_slug ?? input.region });
-      if (floatingIp) return floatingIp;
-    }
+  const initialIp = normalizeRegRuRegletIp(created);
+  if (initialIp?.floating_ip_address) return initialIp;
+
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    await wait(attempt === 0 ? 5_000 : 10_000);
+    const current = await getRegRuServer(input.account, String(created.id));
+    const floatingIp = current ? normalizeRegRuRegletIp(current) : null;
+    if (floatingIp?.floating_ip_address) return floatingIp;
   }
 
-  throw new Error("Reg.ru: IP создан асинхронно, но новый адрес не появился в списке за 60 секунд. Проверьте сервер в панели Reg.ru.");
+  await deleteRegRuServer(input.account, String(created.id));
+  throw new Error("Reg.ru: временный сервер создан, но IP не появился за 4 минуты. Сервер удален автоматически.");
 }
 
 export async function releaseRegRuFloatingIp(input: {
   account: ProviderAccount;
   floatingIpId: string;
 }) {
-  const response = await regRuFetch(input.account, `/v1/ips/${encodeURIComponent(input.floatingIpId)}`, { method: "DELETE" });
-  if (!response.ok && response.status !== 404) {
-    throw await createRegRuApiError("IP delete", response);
-  }
+  await deleteRegRuServer(input.account, input.floatingIpId);
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeRegRuFloatingIp, normalizeRegRuServer } from "@/lib/regru";
+import { normalizeRegRuRegletIp, normalizeRegRuServer } from "@/lib/regru";
 
 test("normalizes Reg.ru server as project binding", () => {
   const result = normalizeRegRuServer({
@@ -26,16 +26,15 @@ test("skips archived Reg.ru servers", () => {
   assert.equal(result, null);
 });
 
-test("normalizes Reg.ru floating IP payload", () => {
-  const result = normalizeRegRuFloatingIp({
+test("normalizes Reg.ru server IP payload", () => {
+  const result = normalizeRegRuRegletIp({
+    id: 3319,
     ip: "193.124.204.254",
     region_slug: "msk1",
-    reglet_id: 3319,
     status: "active",
-    type: "ipv4",
   });
 
-  assert.equal(result?.id, "193.124.204.254");
+  assert.equal(result?.id, "3319");
   assert.equal(result?.floating_ip_address, "193.124.204.254");
   assert.equal(result?.project_id, "3319");
   assert.equal(result?.region, "msk1");

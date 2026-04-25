@@ -7,7 +7,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { enqueueRun } from "@/lib/queue";
-import { listRegRuServers } from "@/lib/regru";
+import { listRegRuCreateRegions, validateRegRuAccount } from "@/lib/regru";
 import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
 import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
 import { listTimewebProjects, listTimewebZones } from "@/lib/timeweb";
@@ -148,20 +148,23 @@ export async function syncProjectsAction(formData: FormData) {
   }
 
   try {
+    if (account.provider === "regru") {
+      await validateRegRuAccount(account);
+    }
+
     const projects =
       account.provider === "timeweb"
         ? (await listTimewebProjects(account)).map((project) => ({ id: String(project.id), name: project.name, url: undefined, regions: [] }))
         : account.provider === "regru"
-          ? await listRegRuServers(account)
+          ? await listRegRuCreateRegions()
           : (await listSelectelProjects(account)).map((project) => ({ ...project, regions: [] }));
 
     if (account.provider === "regru" && projects.length === 0) {
       return {
         ok: false,
-        title: "Reg.ru: серверы не найдены",
-        message: "Ключ принят, но в облачном окружении не найдено активных CloudVPS-серверов для синхронизации.",
-        details:
-          "Swagger v2 у Reg.ru содержит только /v2/images и /v2/plans. Список серверов и дополнительные IP работают через /v1/reglets и /v1/ips. Проверьте, что API-ключ взят из того же облачного окружения, где созданы серверы.",
+        title: "Reg.ru: регионы не найдены",
+        message: "Не удалось подготовить регионы для создания временных серверов.",
+        details: "Проверьте настройки провайдера Reg.ru.",
       };
     }
 
