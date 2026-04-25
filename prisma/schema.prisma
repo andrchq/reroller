@@ -42,6 +42,22 @@ model ProviderAccount {
   updatedAt          DateTime         @updatedAt
   projects           ProjectBinding[]
   profiles           SearchProfile[]
+  dailyUsage         ProviderDailyUsage[]
+}
+
+model ProviderDailyUsage {
+  id                String          @id @default(cuid())
+  providerAccountId String
+  providerAccount   ProviderAccount @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  provider          String
+  operation         String
+  day               String
+  count             Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([providerAccountId, provider, operation, day])
+  @@index([provider, operation, day])
 }
 
 model ProjectBinding {

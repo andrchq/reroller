@@ -32,11 +32,14 @@ export class TimewebApiError extends Error {
   status: number;
   code?: string;
   raw: string;
+  fatal: boolean;
 
   constructor(operation: string, details: TimewebErrorDetails) {
     const message =
       details.code === "no_balance_for_month"
         ? `Timeweb: недостаточно баланса или месячного лимита для создания Floating IP. Пополните баланс или проверьте лимиты в панели Timeweb, затем запустите профиль снова.`
+        : details.code === "daily_limit_exceeded"
+          ? "Timeweb: достигнут дневной лимит создания Floating IP. Задачу можно продолжить после сброса дневного лимита."
         : `Timeweb ${operation} failed: ${formatTimewebError(details)}`;
 
     super(message);
@@ -44,6 +47,7 @@ export class TimewebApiError extends Error {
     this.status = details.status;
     this.code = details.code;
     this.raw = details.raw;
+    this.fatal = details.code === "no_balance_for_month" || details.code === "daily_limit_exceeded";
   }
 }
 

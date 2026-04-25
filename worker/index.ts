@@ -25,6 +25,75 @@ function workerConcurrency() {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 100;
 }
 
+function timewebDailyFloatingIpLimit() {
+  const value = Number(process.env.TIMEWEB_DAILY_FLOATING_IP_CREATE_LIMIT ?? 10);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 10;
+}
+
+function moscowDayKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+async function getProviderDailyUsage(input: {
+  providerAccountId: string;
+  provider: string;
+  operation: string;
+  day: string;
+}) {
+  return prisma.providerDailyUsage.findUnique({
+    where: {
+      providerAccountId_provider_operation_day: input,
+    },
+    select: { count: true },
+  });
+}
+
+async function incrementProviderDailyUsage(input: {
+  providerAccountId: string;
+  provider: string;
+  operation: string;
+  day: string;
+}) {
+  await prisma.providerDailyUsage.upsert({
+    where: {
+      providerAccountId_provider_operation_day: input,
+    },
+    create: {
+      ...input,
+      count: 1,
+    },
+    update: {
+      count: { increment: 1 },
+    },
+  });
+}
+
+async function setProviderDailyUsage(input: {
+  providerAccountId: string;
+  provider: string;
+  operation: string;
+  day: string;
+  count: number;
+}) {
+  await prisma.providerDailyUsage.upsert({
+    where: {
+      providerAccountId_provider_operation_day: {
+        providerAccountId: input.providerAccountId,
+        provider: input.provider,
+        operation: input.operation,
+        day: input.day,
+      },
+    },
+    create: input,
+    update: { count: input.count },
+  });
+}
+
 function remainingMs(deadline: number) {
   return Math.max(0, deadline - Date.now());
 }
@@ -67,6 +136,9 @@ async function processRun(runId: string) {
   const deadline = Date.now() + maxRuntimeSeconds * 1000;
   const requestTimestamps: number[] = [];
   const regionCooldownUntil = new Map<string, number>();
+  const dailyUsageOperation = "floating-ip-create";
+  const day = moscowDayKey();
+  const timewebDailyLimit = timewebDailyFloatingIpLimit();
   let consecutiveErrors = 0;
   let foundCount = await prisma.finding.count({ where: { runId } });
 
@@ -112,6 +184,28 @@ async function processRun(runId: string) {
 
     try {
       const requestedIp = targets.find((target) => !target.includes("/"));
+      if (profile.providerAccount.provider === "timeweb") {
+        const usage = await getProviderDailyUsage({
+          providerAccountId: profile.providerAccount.id,
+          provider: "timeweb",
+          operation: dailyUsageOperation,
+          day,
+        });
+        const used = usage?.count ?? 0;
+        if (used >= timewebDailyLimit) {
+          await appendRunLog(
+            runId,
+            "WARN",
+            `Timeweb: дневной лимит создания Floating IP уже исчерпан (${used}/${timewebDailyLimit}) за ${day}. Задача остановлена до сброса лимита.`,
+          );
+          await prisma.run.update({
+            where: { id: runId },
+            data: { status: "FAILED", stoppedAt: new Date() },
+          });
+          return;
+        }
+      }
+
       await appendRunLog(runId, "INFO", `Попытка ${attempt}: запрос Floating IP в ${selectedRegion}`);
       requestTimestamps.push(Date.now());
       const floatingIp =
@@ -135,6 +229,14 @@ async function processRun(runId: string) {
               });
 
       consecutiveErrors = 0;
+      if (profile.providerAccount.provider === "timeweb") {
+        await incrementProviderDailyUsage({
+          providerAccountId: profile.providerAccount.id,
+          provider: "timeweb",
+          operation: dailyUsageOperation,
+          day,
+        });
+      }
       const address = floatingIp.floating_ip_address;
       const matchedTarget = findMatchedTarget(targets, address);
       if (matchedTarget) {
@@ -198,6 +300,27 @@ async function processRun(runId: string) {
       await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);
       await waitWithDeadline(delaySeconds * 1000, deadline);
     } catch (error) {
+      if (error instanceof TimewebApiError && error.code === "daily_limit_exceeded") {
+        await setProviderDailyUsage({
+          providerAccountId: profile.providerAccount.id,
+          provider: "timeweb",
+          operation: dailyUsageOperation,
+          day,
+          count: timewebDailyLimit,
+        });
+        await appendRunLog(runId, "ERROR", error.message);
+        await appendRunLog(
+          runId,
+          "WARN",
+          `Задача остановлена автоматически: Timeweb вернул daily_limit_exceeded. Лимит на ${day} зафиксирован как ${timewebDailyLimit}/${timewebDailyLimit}.`,
+        );
+        await prisma.run.update({
+          where: { id: runId },
+          data: { status: "FAILED", stoppedAt: new Date() },
+        });
+        return;
+      }
+
       if (error instanceof TimewebApiError && error.code === "no_balance_for_month") {
         await appendRunLog(runId, "ERROR", error.message);
         await appendRunLog(
