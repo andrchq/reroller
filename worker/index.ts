@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 import { allocateFloatingIp, SelectelApiError } from "@/lib/selectel";
-import { allocateTimewebFloatingIp } from "@/lib/timeweb";
+import { allocateTimewebFloatingIp, TimewebApiError } from "@/lib/timeweb";
 import { findMatchedTarget } from "@/lib/ip-matcher";
 import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
@@ -191,6 +191,20 @@ async function processRun(runId: string) {
       await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);
       await waitWithDeadline(delaySeconds * 1000, deadline);
     } catch (error) {
+      if (error instanceof TimewebApiError && error.code === "no_balance_for_month") {
+        await appendRunLog(runId, "ERROR", error.message);
+        await appendRunLog(
+          runId,
+          "WARN",
+          "Задача остановлена автоматически: Timeweb не разрешает создать Floating IP без доступного баланса или месячного лимита.",
+        );
+        await prisma.run.update({
+          where: { id: runId },
+          data: { status: "FAILED", stoppedAt: new Date() },
+        });
+        return;
+      }
+
       if (error instanceof SelectelApiError && error.code === "quota_exceeded") {
         const quotaRegion = error.region ?? selectedRegion;
         regionCooldownUntil.set(quotaRegion, Math.min(deadline, Date.now() + 15 * 60 * 1000));

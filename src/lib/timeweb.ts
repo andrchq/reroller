@@ -20,16 +20,70 @@ export type TimewebFloatingIp = {
   status: string;
 };
 
-async function readTimewebError(response: Response) {
+type TimewebErrorDetails = {
+  status: number;
+  statusText: string;
+  code?: string;
+  message?: string;
+  raw: string;
+};
+
+export class TimewebApiError extends Error {
+  status: number;
+  code?: string;
+  raw: string;
+
+  constructor(operation: string, details: TimewebErrorDetails) {
+    const message =
+      details.code === "no_balance_for_month"
+        ? `Timeweb: недостаточно баланса или месячного лимита для создания Floating IP. Пополните баланс или проверьте лимиты в панели Timeweb, затем запустите профиль снова.`
+        : `Timeweb ${operation} failed: ${formatTimewebError(details)}`;
+
+    super(message);
+    this.name = "TimewebApiError";
+    this.status = details.status;
+    this.code = details.code;
+    this.raw = details.raw;
+  }
+}
+
+function formatTimewebError(details: TimewebErrorDetails) {
+  const code = details.code ?? "error";
+  return `${details.status} ${details.statusText}: ${code}${details.message ? `: ${details.message}` : ""}`;
+}
+
+async function readTimewebError(response: Response): Promise<TimewebErrorDetails> {
   const text = await response.text();
-  if (!text) return `${response.status} ${response.statusText}`;
+  if (!text) {
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      raw: "",
+    };
+  }
+
   try {
     const payload = JSON.parse(text) as { error_code?: string; message?: string | string[] };
     const message = Array.isArray(payload.message) ? payload.message.join("; ") : payload.message;
-    return `${response.status} ${response.statusText}: ${payload.error_code ?? "error"}${message ? `: ${message}` : ""}`;
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      code: payload.error_code,
+      message,
+      raw: text,
+    };
   } catch {
-    return `${response.status} ${response.statusText}: ${text}`;
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      message: text,
+      raw: text,
+    };
   }
+}
+
+async function createTimewebApiError(operation: string, response: Response) {
+  return new TimewebApiError(operation, await readTimewebError(response));
 }
 
 async function timewebFetch(account: ProviderAccount, path: string, init: RequestInit = {}) {
@@ -46,14 +100,14 @@ async function timewebFetch(account: ProviderAccount, path: string, init: Reques
 
 export async function listTimewebProjects(account: ProviderAccount) {
   const response = await timewebFetch(account, "/api/v1/projects");
-  if (!response.ok) throw new Error(`Timeweb projects failed: ${await readTimewebError(response)}`);
+  if (!response.ok) throw await createTimewebApiError("projects", response);
   const payload = (await response.json()) as { projects?: TimewebProject[] };
   return payload.projects ?? [];
 }
 
 export async function listTimewebZones(account: ProviderAccount) {
   const response = await timewebFetch(account, "/api/v2/locations");
-  if (!response.ok) throw new Error(`Timeweb locations failed: ${await readTimewebError(response)}`);
+  if (!response.ok) throw await createTimewebApiError("locations", response);
   const payload = (await response.json()) as { locations?: TimewebLocation[] };
   return [...new Set((payload.locations ?? []).flatMap((location) => location.availability_zones ?? []))].sort();
 }
@@ -88,7 +142,7 @@ export async function allocateTimewebFloatingIp(input: {
       availability_zone: input.region,
     }),
   });
-  if (!response.ok) throw new Error(`Timeweb floating IP create failed: ${await readTimewebError(response)}`);
+  if (!response.ok) throw await createTimewebApiError("floating IP create", response);
   const payload = await response.json();
   const floatingIp = normalizeTimewebFloatingIp(payload);
   if (!floatingIp) throw new Error(`Timeweb floating IP create returned an unexpected payload: ${JSON.stringify(payload).slice(0, 700)}`);
@@ -101,6 +155,6 @@ export async function releaseTimewebFloatingIp(input: {
 }) {
   const response = await timewebFetch(input.account, `/api/v1/floating-ips/${input.floatingIpId}`, { method: "DELETE" });
   if (!response.ok && response.status !== 404) {
-    throw new Error(`Timeweb floating IP delete failed: ${await readTimewebError(response)}`);
+    throw await createTimewebApiError("floating IP delete", response);
   }
 }
