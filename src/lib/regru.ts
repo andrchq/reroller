@@ -55,12 +55,14 @@ export type RegRuFloatingIp = {
   status: string;
 };
 
-export const regRuCreateRegions = [
-  { id: "openstack-msk1", name: "Reg.ru Москва", url: undefined, regions: ["openstack-msk1"] },
-  { id: "openstack-spb1", name: "Reg.ru Санкт-Петербург", url: undefined, regions: ["openstack-spb1"] },
-  { id: "openstack-msk2", name: "Reg.ru Москва-2", url: undefined, regions: ["openstack-msk2"] },
-  { id: "openstack-sam1", name: "Reg.ru Самара", url: undefined, regions: ["openstack-sam1"] },
-] satisfies RegRuServerProject[];
+export const regRuCreateRegions = ["openstack-msk1", "openstack-spb1", "openstack-msk2", "openstack-sam1"];
+
+export const regRuProject = {
+  id: "cloudvps",
+  name: "Reg.ru CloudVPS",
+  url: undefined,
+  regions: regRuCreateRegions,
+} satisfies RegRuServerProject;
 
 export class RegRuApiError extends Error {
   status: number;
@@ -168,7 +170,7 @@ export function normalizeRegRuRegletIp(reglet: RegRuReglet): RegRuFloatingIp | n
 }
 
 export async function listRegRuCreateRegions() {
-  return regRuCreateRegions;
+  return [regRuProject];
 }
 
 export async function validateRegRuAccount(account: ProviderAccount) {

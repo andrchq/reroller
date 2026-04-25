@@ -48,6 +48,8 @@ export function ProfileForm({
   const regionGroups: Record<string, Array<{ name: string; city: string; label: string; badge?: string }>> =
     selectedProject?.provider === "selectel"
       ? selectelZoneGroups(regions)
+      : selectedProject?.provider === "regru"
+        ? regRuZoneGroups(regions)
       : { "Зоны провайдера": regions.map((name) => ({ name, city: "Зоны провайдера", label: "Зона доступности" })) };
   const action = profile ? updateProfileAction : createProfileAction;
   const content = (
@@ -152,4 +154,20 @@ export function ProfileForm({
 
   if (!framed) return <div className="rounded-md border border-[var(--line)] bg-black/20 p-3">{content}</div>;
   return <Card>{content}</Card>;
+}
+
+function regRuZoneGroups(regions: string[]) {
+  const labels: Record<string, { city: string; label: string }> = {
+    "openstack-msk1": { city: "Москва", label: "Основная зона" },
+    "openstack-spb1": { city: "Санкт-Петербург", label: "Основная зона" },
+    "openstack-msk2": { city: "Москва-2", label: "Зона доступности" },
+    "openstack-sam1": { city: "Самара", label: "Зона доступности" },
+  };
+  return {
+    "Зоны Reg.ru": regions.map((name) => ({
+      name,
+      city: labels[name]?.city ?? "Зоны Reg.ru",
+      label: labels[name]?.label ?? "Зона доступности",
+    })),
+  };
 }

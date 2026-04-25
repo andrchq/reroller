@@ -173,6 +173,17 @@ export async function syncProjectsAction(formData: FormData) {
     let syncedRegions = 0;
     const notes = new Set<string>();
 
+    if (account.provider === "regru") {
+      await prisma.projectBinding.deleteMany({
+        where: {
+          providerAccountId: account.id,
+          externalProjectId: { in: ["openstack-msk1", "openstack-spb1", "openstack-msk2", "openstack-sam1"] },
+          profiles: { none: {} },
+        },
+      });
+      notes.add("Reg.ru использует один логический проект CloudVPS, а Москва, Санкт-Петербург, Москва-2 и Самара сохранены как зоны доступности.");
+    }
+
     for (const project of projects) {
       const binding = await prisma.projectBinding.upsert({
         where: {
