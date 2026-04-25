@@ -1,7 +1,7 @@
+import { AccountForm } from "@/components/account-form";
 import { AppShell, PageHeader } from "@/components/shell";
-import { Button, Card, Field, InfoTip, Input, Select } from "@/components/ui";
 import { SyncProjectsButton } from "@/components/sync-projects-button";
-import { createAccountAction } from "@/lib/actions";
+import { Card, InfoTip } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { providerLabel } from "@/lib/providers";
@@ -31,7 +31,9 @@ export default async function AccountsPage() {
                       </span>
                     </div>
                     {account.provider === "selectel" ? (
-                      <div className="text-sm text-[var(--muted)]">ID аккаунта: {account.accountId} / Пользователь: {account.username}</div>
+                      <div className="text-sm text-[var(--muted)]">
+                        ID аккаунта: {account.accountId} / Пользователь: {account.username}
+                      </div>
                     ) : (
                       <div className="text-sm text-[var(--muted)]">API token сохранен зашифрованно</div>
                     )}
@@ -54,34 +56,14 @@ export default async function AccountsPage() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="min-h-[31rem]">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-[#fff4d6]">Добавить провайдера</div>
             <InfoTip label="Какие данные нужны">
               Для Selectel укажите service user credentials. Для Timeweb Cloud укажите API token из раздела API и Terraform.
             </InfoTip>
           </div>
-          <form action={createAccountAction} className="grid gap-3">
-            <Field label="Провайдер">
-              <Select name="provider" required defaultValue="selectel">
-                <option value="selectel">Selectel</option>
-                <option value="timeweb">Timeweb Cloud</option>
-              </Select>
-            </Field>
-            <Field label="Название">
-              <Input name="name" required placeholder="Основной аккаунт" />
-            </Field>
-            <Field label="ID аккаунта Selectel">
-              <Input name="accountId" placeholder="Для Timeweb можно оставить пустым" />
-            </Field>
-            <Field label="Имя service user Selectel">
-              <Input name="username" placeholder="Для Timeweb можно оставить пустым" />
-            </Field>
-            <Field label="Пароль Selectel или API token Timeweb">
-              <Input name="password" type="password" required />
-            </Field>
-            <Button type="submit">Сохранить аккаунт</Button>
-          </form>
+          <AccountForm />
         </Card>
 
         <Card>
