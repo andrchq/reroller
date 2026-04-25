@@ -17,6 +17,11 @@ function randomFloat(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
 
+function workerConcurrency() {
+  const value = Number(process.env.WORKER_CONCURRENCY ?? 100);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 100;
+}
+
 function remainingMs(deadline: number) {
   return Math.max(0, deadline - Date.now());
 }
@@ -218,7 +223,7 @@ async function processRun(runId: string) {
 const worker = new Worker<RunJob>(
   runQueueName,
   async (job) => processRun(job.data.runId),
-  { connection: createRedisConnection(), concurrency: 1 },
+  { connection: createRedisConnection(), concurrency: workerConcurrency() },
 );
 
 worker.on("failed", async (job, error) => {
@@ -231,4 +236,4 @@ worker.on("failed", async (job, error) => {
   }
 });
 
-console.log(`Reroller worker listening on ${runQueueName}`);
+console.log(`Reroller worker listening on ${runQueueName} with concurrency ${workerConcurrency()}`);

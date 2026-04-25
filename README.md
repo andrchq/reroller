@@ -20,7 +20,7 @@ npm run prisma:migrate
 npm run dev
 ```
 
-Set `DATABASE_URL` in `.env` to your local PostgreSQL database. Redis is still required for background jobs; set `REDIS_URL` to your local Redis instance.
+Set `DATABASE_URL` in `.env` to your local PostgreSQL database. Redis is still required for background jobs; set `REDIS_URL` to your local Redis instance. `WORKER_CONCURRENCY` controls how many runs the worker processes in parallel; the default is `100`.
 
 In another terminal run the worker:
 
