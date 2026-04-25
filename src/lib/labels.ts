@@ -9,6 +9,7 @@ export type RunFailureReason =
   | "TIMEOUT"
   | "PROVIDER"
   | "PAYLOAD"
+  | "WORKER"
   | "UNKNOWN";
 
 const failureReasonLabels: Record<RunFailureReason, string> = {
@@ -20,6 +21,7 @@ const failureReasonLabels: Record<RunFailureReason, string> = {
   TIMEOUT: "Таймаут",
   PROVIDER: "Провайдер",
   PAYLOAD: "Ответ API",
+  WORKER: "Воркер",
   UNKNOWN: "Сбой",
 };
 

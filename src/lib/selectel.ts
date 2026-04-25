@@ -5,6 +5,29 @@ import { prisma } from "@/lib/prisma";
 const identityUrl = "https://cloud.api.selcloud.ru/identity/v3/auth/tokens";
 const vpcUrl = "https://api.selectel.ru/vpc/resell/v2";
 
+function providerHttpTimeoutMs() {
+  const value = Number(process.env.PROVIDER_HTTP_TIMEOUT_MS ?? 120_000);
+  return Number.isFinite(value) && value >= 10_000 ? Math.floor(value) : 120_000;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerHttpTimeoutMs());
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: init.signal ?? controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Selectel request timed out after ${Math.ceil(providerHttpTimeoutMs() / 1000)} sec`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 type SelectelProject = {
   id: string;
   name: string;
@@ -165,7 +188,7 @@ export async function getSelectelAccountToken(account: ProviderAccount, forceRef
   }
 
   const password = decryptSecret(account.encryptedPassword);
-  const response = await fetch(identityUrl, {
+  const response = await fetchWithTimeout(identityUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(tokenScopeBody(account, password, { type: "account" })),
@@ -199,7 +222,7 @@ export async function getSelectelProjectToken(account: ProviderAccount, projectN
   }
 
   const password = decryptSecret(account.encryptedPassword);
-  const response = await fetch(identityUrl, {
+  const response = await fetchWithTimeout(identityUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(tokenScopeBody(account, password, { type: "project", projectName })),
@@ -235,7 +258,7 @@ async function selectelFetch(
       ? await getSelectelAccountToken(account)
       : await getSelectelProjectToken(account, scope.projectName);
 
-  const response = await fetch(`${vpcUrl}${path}`, {
+  const response = await fetchWithTimeout(`${vpcUrl}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -249,7 +272,7 @@ async function selectelFetch(
       scope.type === "account"
         ? await getSelectelAccountToken(account, true)
         : await getSelectelProjectToken(account, scope.projectName, true);
-    return fetch(`${vpcUrl}${path}`, {
+    return fetchWithTimeout(`${vpcUrl}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",

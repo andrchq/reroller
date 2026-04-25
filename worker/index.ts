@@ -10,7 +10,17 @@ import { appendRunLog } from "@/lib/run-log";
 import { buildFindingMessage, sendTelegramMessage } from "@/lib/telegram";
 import { wait } from "@/lib/utils";
 
-type FailureReason = "AUTH" | "BALANCE" | "QUOTA" | "DAILY_LIMIT" | "RATE_LIMIT" | "TIMEOUT" | "PROVIDER" | "PAYLOAD" | "UNKNOWN";
+type FailureReason =
+  | "AUTH"
+  | "BALANCE"
+  | "QUOTA"
+  | "DAILY_LIMIT"
+  | "RATE_LIMIT"
+  | "TIMEOUT"
+  | "PROVIDER"
+  | "PAYLOAD"
+  | "WORKER"
+  | "UNKNOWN";
 
 function randomInt(min: number, max: number) {
   const safeMin = Math.ceil(Math.min(min, max));
@@ -25,6 +35,21 @@ function randomFloat(min: number, max: number) {
 function workerConcurrency() {
   const value = Number(process.env.WORKER_CONCURRENCY ?? 100);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 100;
+}
+
+function workerLockDurationMs() {
+  const value = Number(process.env.WORKER_LOCK_DURATION_MS ?? 10 * 60 * 1000);
+  return Number.isFinite(value) && value >= 60_000 ? Math.floor(value) : 10 * 60 * 1000;
+}
+
+function workerStalledIntervalMs() {
+  const value = Number(process.env.WORKER_STALLED_INTERVAL_MS ?? 60_000);
+  return Number.isFinite(value) && value >= 30_000 ? Math.floor(value) : 60_000;
+}
+
+function workerMaxStalledCount() {
+  const value = Number(process.env.WORKER_MAX_STALLED_COUNT ?? 3);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 3;
 }
 
 function timewebDailyFloatingIpLimit() {
@@ -136,6 +161,8 @@ function classifyFailureReason(error: unknown): FailureReason {
   if (message.includes("401") || message.includes("403") || message.includes("auth") || message.includes("token")) return "AUTH";
   if (message.includes("429") || message.includes("rate")) return "RATE_LIMIT";
   if (message.includes("unexpected payload")) return "PAYLOAD";
+  if (message.includes("timed out") || message.includes("timeout")) return "TIMEOUT";
+  if (message.includes("stalled") || message.includes("lock")) return "WORKER";
   return "UNKNOWN";
 }
 
@@ -416,7 +443,13 @@ async function processRun(runId: string) {
 const worker = new Worker<RunJob>(
   runQueueName,
   async (job) => processRun(job.data.runId),
-  { connection: createRedisConnection(), concurrency: workerConcurrency() },
+  {
+    connection: createRedisConnection(),
+    concurrency: workerConcurrency(),
+    lockDuration: workerLockDurationMs(),
+    stalledInterval: workerStalledIntervalMs(),
+    maxStalledCount: workerMaxStalledCount(),
+  },
 );
 
 worker.on("failed", async (job, error) => {
@@ -426,4 +459,6 @@ worker.on("failed", async (job, error) => {
   }
 });
 
-console.log(`Reroller worker listening on ${runQueueName} with concurrency ${workerConcurrency()}`);
+console.log(
+  `Reroller worker listening on ${runQueueName} with concurrency ${workerConcurrency()}, lock ${workerLockDurationMs()}ms, stalled interval ${workerStalledIntervalMs()}ms`,
+);
