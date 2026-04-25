@@ -15,6 +15,17 @@ test("normalizes Reg.ru server as project binding", () => {
   assert.deepEqual(result?.regions, ["msk1"]);
 });
 
+test("skips archived Reg.ru servers", () => {
+  const result = normalizeRegRuServer({
+    id: 6891,
+    name: "old",
+    region_slug: "msk1",
+    status: "archive",
+  });
+
+  assert.equal(result, null);
+});
+
 test("normalizes Reg.ru floating IP payload", () => {
   const result = normalizeRegRuFloatingIp({
     ip: "193.124.204.254",

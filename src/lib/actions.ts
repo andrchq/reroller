@@ -154,6 +154,17 @@ export async function syncProjectsAction(formData: FormData) {
         : account.provider === "regru"
           ? await listRegRuServers(account)
           : (await listSelectelProjects(account)).map((project) => ({ ...project, regions: [] }));
+
+    if (account.provider === "regru" && projects.length === 0) {
+      return {
+        ok: false,
+        title: "Reg.ru: серверы не найдены",
+        message: "Ключ принят, но в облачном окружении не найдено активных CloudVPS-серверов для синхронизации.",
+        details:
+          "Swagger v2 у Reg.ru содержит только /v2/images и /v2/plans. Список серверов и дополнительные IP работают через /v1/reglets и /v1/ips. Проверьте, что API-ключ взят из того же облачного окружения, где созданы серверы.",
+      };
+    }
+
     const timewebZones = account.provider === "timeweb" ? await listTimewebZones(account) : [];
     let syncedProjects = 0;
     let syncedRegions = 0;

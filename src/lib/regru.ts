@@ -14,6 +14,7 @@ type RegRuErrorDetails = {
 
 type RegRuReglet = {
   id: number;
+  archived_at?: string | null;
   name?: string;
   hostname?: string;
   ip?: string;
@@ -87,8 +88,8 @@ async function readRegRuError(response: Response): Promise<RegRuErrorDetails> {
   try {
     const payload = JSON.parse(text) as {
       error?: string;
-      error_code?: string;
-      code?: string;
+      error_code?: string | number;
+      code?: string | number;
       message?: string | string[];
       detail?: string;
       errors?: unknown;
@@ -99,7 +100,7 @@ async function readRegRuError(response: Response): Promise<RegRuErrorDetails> {
     return {
       status: response.status,
       statusText: response.statusText,
-      code: payload.error_code ?? payload.code,
+      code: payload.error_code || payload.code ? String(payload.error_code ?? payload.code) : undefined,
       message,
       raw: text,
     };
@@ -126,6 +127,7 @@ async function regRuFetch(account: ProviderAccount, path: string, init: RequestI
 
 export function normalizeRegRuServer(reglet: RegRuReglet): RegRuServerProject | null {
   if (!reglet.id || !reglet.region_slug) return null;
+  if (reglet.archived_at || reglet.status === "archive") return null;
   const title = reglet.name || reglet.hostname || `Сервер ${reglet.id}`;
   const ipSuffix = reglet.ip ? ` / ${reglet.ip}` : "";
   return {
