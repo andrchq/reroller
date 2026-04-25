@@ -25,6 +25,8 @@ type ProfileDefaults = {
   errorDelaySeconds: number;
   maxRuntimeSeconds: number;
   maxFindings: number;
+  serverWaitIntervalSeconds: number;
+  serverWaitMaxSeconds: number;
 };
 
 export function ProfileForm({
@@ -42,6 +44,7 @@ export function ProfileForm({
     [projectId, projects],
   );
   const regions = selectedProject?.regions ?? [];
+  const isRegRu = selectedProject?.provider === "regru";
   const [selectedRegions, setSelectedRegions] = useState(
     profile?.regions.length ? profile.regions : profile?.region ? [profile.region] : regions[0] ? [regions[0]] : [],
   );
@@ -125,6 +128,24 @@ export function ProfileForm({
         <Field label="Целевые IP или CIDR, по одному в строке">
           <Textarea name="targets" required placeholder={"203.0.113.10\n198.51.100.0/24"} defaultValue={profile?.targets} />
         </Field>
+        {isRegRu ? (
+          <div className="grid gap-3 rounded-md border border-[#f6c453]/20 bg-[#f6c453]/5 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#f6c453]">Ожидание сервера Reg.ru</div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Проверка IP, сек">
+                <Input name="serverWaitIntervalSeconds" type="number" defaultValue={profile?.serverWaitIntervalSeconds ?? 10} min={5} />
+              </Field>
+              <Field label="Макс. ожидание IP, сек">
+                <Input name="serverWaitMaxSeconds" type="number" defaultValue={profile?.serverWaitMaxSeconds ?? 240} min={60} />
+              </Field>
+            </div>
+          </div>
+        ) : (
+          <>
+            <input type="hidden" name="serverWaitIntervalSeconds" value={profile?.serverWaitIntervalSeconds ?? 10} />
+            <input type="hidden" name="serverWaitMaxSeconds" value={profile?.serverWaitMaxSeconds ?? 240} />
+          </>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Запросов в минуту">
             <Input name="requestsPerMinute" type="number" defaultValue={profile?.requestsPerMinute ?? 6} min={1} />

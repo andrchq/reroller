@@ -235,6 +235,9 @@ export async function allocateRegRuFloatingIp(input: {
   account: ProviderAccount;
   regletId: string;
   region: string;
+  waitIntervalSeconds: number;
+  waitMaxSeconds: number;
+  onLog?: (message: string) => Promise<void>;
 }) {
   const plans = await listRegRuPlans(input.account, input.region);
   const plan = selectSmallestPlan(plans);
@@ -262,15 +265,21 @@ export async function allocateRegRuFloatingIp(input: {
   const initialIp = normalizeRegRuRegletIp(created);
   if (initialIp?.floating_ip_address) return initialIp;
 
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    await wait(attempt === 0 ? 5_000 : 10_000);
+  const waitIntervalSeconds = Math.max(5, input.waitIntervalSeconds);
+  const waitMaxSeconds = Math.max(60, input.waitMaxSeconds);
+  const deadline = Date.now() + waitMaxSeconds * 1000;
+  await input.onLog?.(`Reg.ru: сервер ${created.id} создан, ожидаю выдачу IP до ${waitMaxSeconds} сек. Проверка каждые ${waitIntervalSeconds} сек.`);
+
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    await wait(Math.min(waitIntervalSeconds * 1000, Math.max(0, deadline - Date.now())));
+    await input.onLog?.(`Reg.ru: проверка готовности сервера ${created.id}, попытка ${attempt}`);
     const current = await getRegRuServer(input.account, String(created.id));
     const floatingIp = current ? normalizeRegRuRegletIp(current) : null;
     if (floatingIp?.floating_ip_address) return floatingIp;
   }
 
   await deleteRegRuServer(input.account, String(created.id));
-  throw new Error("Reg.ru: временный сервер создан, но IP не появился за 4 минуты. Сервер удален автоматически.");
+  throw new Error(`Reg.ru: временный сервер создан, но IP не появился за ${waitMaxSeconds} сек. Сервер удален автоматически.`);
 }
 
 export async function releaseRegRuFloatingIp(input: {

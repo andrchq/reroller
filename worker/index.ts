@@ -203,6 +203,8 @@ async function processRun(runId: string) {
   const errorDelaySeconds = Math.max(1, rateLimit?.errorDelaySeconds ?? 60);
   const maxRuntimeSeconds = Math.max(60, rateLimit?.maxRuntimeSeconds ?? 3600);
   const maxFindings = Math.max(1, rateLimit?.maxFindings ?? 1);
+  const serverWaitIntervalSeconds = Math.max(5, rateLimit?.serverWaitIntervalSeconds ?? 10);
+  const serverWaitMaxSeconds = Math.max(60, rateLimit?.serverWaitMaxSeconds ?? 240);
   const deadline = Date.now() + maxRuntimeSeconds * 1000;
   const requestTimestamps: number[] = [];
   const regionCooldownUntil = new Map<string, number>();
@@ -287,6 +289,11 @@ async function processRun(runId: string) {
                 account: profile.providerAccount,
                 regletId: profile.projectBinding.externalProjectId,
                 region: selectedRegion,
+                waitIntervalSeconds: serverWaitIntervalSeconds,
+                waitMaxSeconds: serverWaitMaxSeconds,
+                onLog: async (message) => {
+                  await appendRunLog(runId, "INFO", message);
+                },
               })
             : await allocateFloatingIp({
                 account: profile.providerAccount,

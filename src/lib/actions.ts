@@ -35,6 +35,8 @@ function rateLimitInput(formData: FormData) {
     errorDelaySeconds: optionalNumber(formData, "errorDelaySeconds", 60),
     maxRuntimeSeconds: optionalNumber(formData, "maxRuntimeSeconds", 3600),
     maxFindings: optionalNumber(formData, "maxFindings", 1),
+    serverWaitIntervalSeconds: optionalNumber(formData, "serverWaitIntervalSeconds", 10),
+    serverWaitMaxSeconds: optionalNumber(formData, "serverWaitMaxSeconds", 240),
   };
 }
 
@@ -365,6 +367,8 @@ export async function duplicateProfileAction(formData: FormData) {
               errorDelaySeconds: profile.rateLimit.errorDelaySeconds,
               maxRuntimeSeconds: profile.rateLimit.maxRuntimeSeconds,
               maxFindings: profile.rateLimit.maxFindings,
+              serverWaitIntervalSeconds: profile.rateLimit.serverWaitIntervalSeconds,
+              serverWaitMaxSeconds: profile.rateLimit.serverWaitMaxSeconds,
             },
           }
         : undefined,

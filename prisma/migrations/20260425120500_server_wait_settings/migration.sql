@@ -1,0 +1,2 @@
+ALTER TABLE "RateLimitPolicy" ADD COLUMN "serverWaitIntervalSeconds" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "RateLimitPolicy" ADD COLUMN "serverWaitMaxSeconds" INTEGER NOT NULL DEFAULT 240;

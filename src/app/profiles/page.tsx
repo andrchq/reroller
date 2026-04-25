@@ -88,6 +88,8 @@ export default async function ProfilesPage() {
                           errorDelaySeconds: profile.rateLimit?.errorDelaySeconds ?? 60,
                           maxRuntimeSeconds: profile.rateLimit?.maxRuntimeSeconds ?? 3600,
                           maxFindings: profile.rateLimit?.maxFindings ?? 1,
+                          serverWaitIntervalSeconds: profile.rateLimit?.serverWaitIntervalSeconds ?? 10,
+                          serverWaitMaxSeconds: profile.rateLimit?.serverWaitMaxSeconds ?? 240,
                         }}
                       />
                     </div>
