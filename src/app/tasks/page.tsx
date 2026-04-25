@@ -87,7 +87,7 @@ export default async function TasksPage({
                       </div>
                       {lastRun ? (
                         <Badge tone={lastRun.status === "FAILED" ? "bad" : lastRun.status === "COMPLETED" ? "good" : "default"}>
-                          {runStatusLabel(lastRun.status)}
+                          {runStatusLabel(lastRun.status, lastRun.failureReason)}
                         </Badge>
                       ) : (
                         <Badge>Не запускалась</Badge>
@@ -131,7 +131,9 @@ export default async function TasksPage({
                 <a key={run.id} href={pageLink({ runId: run.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="rounded-md border border-[var(--line)] bg-black/20 p-3 hover:bg-[#f6c453]/10">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium">{run.searchProfile.name}</span>
-                    <Badge tone={run.status === "FAILED" ? "bad" : run.status === "COMPLETED" ? "good" : "default"}>{runStatusLabel(run.status)}</Badge>
+                    <Badge tone={run.status === "FAILED" ? "bad" : run.status === "COMPLETED" ? "good" : "default"}>
+                      {runStatusLabel(run.status, run.failureReason)}
+                    </Badge>
                   </div>
                   <div className="mt-1 text-xs text-[var(--muted)]">Попыток: {run.attempts} / {run.createdAt.toLocaleString("ru-RU")}</div>
                 </a>

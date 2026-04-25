@@ -137,6 +137,7 @@ model Run {
   searchProfileId String
   searchProfile   SearchProfile @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
   status          RunStatus     @default(QUEUED)
+  failureReason   String?
   attempts        Int           @default(0)
   startedAt       DateTime?
   stoppedAt       DateTime?

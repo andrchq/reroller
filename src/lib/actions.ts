@@ -418,7 +418,7 @@ export async function stopRunAction(formData: FormData) {
   const runId = requiredString(formData, "runId");
   await prisma.run.update({
     where: { id: runId },
-    data: { status: "STOPPED", stoppedAt: new Date() },
+    data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
   });
   revalidatePath("/runs");
   revalidatePath("/tasks");
@@ -432,7 +432,7 @@ export async function stopProfileRunsAction(formData: FormData) {
       searchProfileId: profileId,
       status: { in: ["QUEUED", "RUNNING"] },
     },
-    data: { status: "STOPPED", stoppedAt: new Date() },
+    data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
   });
   revalidatePath("/runs");
   revalidatePath("/tasks");

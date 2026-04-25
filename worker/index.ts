@@ -10,6 +10,8 @@ import { appendRunLog } from "@/lib/run-log";
 import { buildFindingMessage, sendTelegramMessage } from "@/lib/telegram";
 import { wait } from "@/lib/utils";
 
+type FailureReason = "AUTH" | "BALANCE" | "QUOTA" | "DAILY_LIMIT" | "RATE_LIMIT" | "TIMEOUT" | "PROVIDER" | "PAYLOAD" | "UNKNOWN";
+
 function randomInt(min: number, max: number) {
   const safeMin = Math.ceil(Math.min(min, max));
   const safeMax = Math.floor(Math.max(min, max));
@@ -103,6 +105,47 @@ async function waitWithDeadline(ms: number, deadline: number) {
   if (delay > 0) await wait(delay);
 }
 
+function classifyFailureReason(error: unknown): FailureReason {
+  if (error instanceof TimewebApiError) {
+    if (error.code === "daily_limit_exceeded") return "DAILY_LIMIT";
+    if (error.code === "no_balance_for_month") return "BALANCE";
+    if (error.status === 401 || error.status === 403) return "AUTH";
+    if (error.status === 429) return "RATE_LIMIT";
+    return "PROVIDER";
+  }
+
+  if (error instanceof SelectelApiError) {
+    if (error.code === "quota_exceeded") return "QUOTA";
+    if (error.status === 401 || error.status === 403) return "AUTH";
+    if (error.status === 429) return "RATE_LIMIT";
+    return "PROVIDER";
+  }
+
+  if (error instanceof RegRuApiError) {
+    const message = error.message.toLowerCase();
+    if (error.status === 401 || error.status === 403 || message.includes("token")) return "AUTH";
+    if (message.includes("баланс") || message.includes("balance")) return "BALANCE";
+    if (message.includes("лимит") || message.includes("limit") || message.includes("quota")) return "QUOTA";
+    if (error.status === 429) return "RATE_LIMIT";
+    return "PROVIDER";
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (message.includes("quota") || message.includes("квот")) return "QUOTA";
+  if (message.includes("balance") || message.includes("баланс")) return "BALANCE";
+  if (message.includes("401") || message.includes("403") || message.includes("auth") || message.includes("token")) return "AUTH";
+  if (message.includes("429") || message.includes("rate")) return "RATE_LIMIT";
+  if (message.includes("unexpected payload")) return "PAYLOAD";
+  return "UNKNOWN";
+}
+
+async function failRun(runId: string, reason: FailureReason) {
+  await prisma.run.update({
+    where: { id: runId },
+    data: { status: "FAILED", failureReason: reason, stoppedAt: new Date() },
+  });
+}
+
 async function processRun(runId: string) {
   const run = await prisma.run.findUnique({
     where: { id: runId },
@@ -140,11 +183,12 @@ async function processRun(runId: string) {
   const day = moscowDayKey();
   const timewebDailyLimit = timewebDailyFloatingIpLimit();
   let consecutiveErrors = 0;
+  let lastFailureReason: FailureReason | null = null;
   let foundCount = await prisma.finding.count({ where: { runId } });
 
   await prisma.run.update({
     where: { id: runId },
-    data: { status: "RUNNING", startedAt: new Date() },
+    data: { status: "RUNNING", failureReason: null, startedAt: new Date() },
   });
   await appendRunLog(
     runId,
@@ -198,10 +242,7 @@ async function processRun(runId: string) {
             "WARN",
             `Timeweb: дневной лимит создания Floating IP уже исчерпан (${used}/${timewebDailyLimit}) за ${day}. Задача остановлена до сброса лимита.`,
           );
-          await prisma.run.update({
-            where: { id: runId },
-            data: { status: "FAILED", stoppedAt: new Date() },
-          });
+          await failRun(runId, "DAILY_LIMIT");
           return;
         }
       }
@@ -278,7 +319,7 @@ async function processRun(runId: string) {
           await appendRunLog(runId, "SUCCESS", `Достигнут лимит найденных IP: ${maxFindings}`);
           await prisma.run.update({
             where: { id: runId },
-            data: { status: "COMPLETED", stoppedAt: new Date() },
+            data: { status: "COMPLETED", failureReason: null, stoppedAt: new Date() },
           });
           return;
         }
@@ -314,10 +355,7 @@ async function processRun(runId: string) {
           "WARN",
           `Задача остановлена автоматически: Timeweb вернул daily_limit_exceeded. Лимит на ${day} зафиксирован как ${timewebDailyLimit}/${timewebDailyLimit}.`,
         );
-        await prisma.run.update({
-          where: { id: runId },
-          data: { status: "FAILED", stoppedAt: new Date() },
-        });
+        await failRun(runId, "DAILY_LIMIT");
         return;
       }
 
@@ -328,30 +366,26 @@ async function processRun(runId: string) {
           "WARN",
           "Задача остановлена автоматически: Timeweb не разрешает создать Floating IP без доступного баланса или месячного лимита.",
         );
-        await prisma.run.update({
-          where: { id: runId },
-          data: { status: "FAILED", stoppedAt: new Date() },
-        });
+        await failRun(runId, "BALANCE");
         return;
       }
 
       if (error instanceof RegRuApiError && error.fatal) {
         await appendRunLog(runId, "ERROR", error.message);
         await appendRunLog(runId, "WARN", "Задача остановлена автоматически: ошибка Reg.ru не исправится повторными попытками.");
-        await prisma.run.update({
-          where: { id: runId },
-          data: { status: "FAILED", stoppedAt: new Date() },
-        });
+        await failRun(runId, classifyFailureReason(error));
         return;
       }
 
       if (error instanceof SelectelApiError && error.code === "quota_exceeded") {
+        lastFailureReason = "QUOTA";
         const quotaRegion = error.region ?? selectedRegion;
         regionCooldownUntil.set(quotaRegion, Math.min(deadline, Date.now() + 15 * 60 * 1000));
         await appendRunLog(runId, "WARN", `Квота Floating IP исчерпана в зоне ${quotaRegion}. Зона исключена из выбора на 15 минут.`);
       }
 
       consecutiveErrors += 1;
+      lastFailureReason = classifyFailureReason(error);
       const message = error instanceof Error ? error.message : "Unknown worker error";
       await appendRunLog(runId, "ERROR", message);
 
@@ -370,16 +404,13 @@ async function processRun(runId: string) {
     await appendRunLog(runId, "SUCCESS", `Достигнут лимит найденных IP: ${maxFindings}`);
     await prisma.run.update({
       where: { id: runId },
-      data: { status: "COMPLETED", stoppedAt: new Date() },
+      data: { status: "COMPLETED", failureReason: null, stoppedAt: new Date() },
     });
     return;
   }
 
   await appendRunLog(runId, "WARN", "Истекло заданное время работы профиля");
-  await prisma.run.update({
-    where: { id: runId },
-    data: { status: "FAILED", stoppedAt: new Date() },
-  });
+  await failRun(runId, lastFailureReason ?? "TIMEOUT");
 }
 
 const worker = new Worker<RunJob>(
@@ -391,10 +422,7 @@ const worker = new Worker<RunJob>(
 worker.on("failed", async (job, error) => {
   if (job?.data.runId) {
     await appendRunLog(job.data.runId, "ERROR", error.message);
-    await prisma.run.update({
-      where: { id: job.data.runId },
-      data: { status: "FAILED", stoppedAt: new Date() },
-    });
+    await failRun(job.data.runId, classifyFailureReason(error));
   }
 });
 

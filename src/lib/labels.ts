@@ -1,11 +1,41 @@
 import type { LogLevel, RunStatus } from "@prisma/client";
 
-export function runStatusLabel(status: RunStatus) {
+export type RunFailureReason =
+  | "AUTH"
+  | "BALANCE"
+  | "QUOTA"
+  | "DAILY_LIMIT"
+  | "RATE_LIMIT"
+  | "TIMEOUT"
+  | "PROVIDER"
+  | "PAYLOAD"
+  | "UNKNOWN";
+
+const failureReasonLabels: Record<RunFailureReason, string> = {
+  AUTH: "Авторизация",
+  BALANCE: "Баланс",
+  QUOTA: "Квота",
+  DAILY_LIMIT: "Дневной лимит",
+  RATE_LIMIT: "Рейтлимит",
+  TIMEOUT: "Таймаут",
+  PROVIDER: "Провайдер",
+  PAYLOAD: "Ответ API",
+  UNKNOWN: "Сбой",
+};
+
+export function failureReasonLabel(reason?: string | null) {
+  if (!reason) return failureReasonLabels.UNKNOWN;
+  return failureReasonLabels[reason as RunFailureReason] ?? reason;
+}
+
+export function runStatusLabel(status: RunStatus, failureReason?: string | null) {
+  if (status === "FAILED") return failureReasonLabel(failureReason);
+
   const labels: Record<RunStatus, string> = {
     QUEUED: "В очереди",
     RUNNING: "В работе",
     STOPPED: "Остановлен",
-    FAILED: "Ошибка",
+    FAILED: failureReasonLabels.UNKNOWN,
     COMPLETED: "Завершен",
   };
   return labels[status];
