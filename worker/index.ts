@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import { allocateFloatingIp, SelectelApiError } from "@/lib/selectel";
 import { allocateTimewebFloatingIp, TimewebApiError } from "@/lib/timeweb";
+import { allocateRegRuFloatingIp, RegRuApiError } from "@/lib/regru";
 import { findMatchedTarget } from "@/lib/ip-matcher";
 import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
@@ -119,13 +120,19 @@ async function processRun(runId: string) {
               account: profile.providerAccount,
               region: selectedRegion,
             })
-          : await allocateFloatingIp({
-              account: profile.providerAccount,
-              projectId: profile.projectBinding.externalProjectId,
-              projectName: profile.projectBinding.name,
-              region: selectedRegion,
-              requestedIp,
-            });
+          : profile.providerAccount.provider === "regru"
+            ? await allocateRegRuFloatingIp({
+                account: profile.providerAccount,
+                regletId: profile.projectBinding.externalProjectId,
+                region: selectedRegion,
+              })
+            : await allocateFloatingIp({
+                account: profile.providerAccount,
+                projectId: profile.projectBinding.externalProjectId,
+                projectName: profile.projectBinding.name,
+                region: selectedRegion,
+                requestedIp,
+              });
 
       consecutiveErrors = 0;
       const address = floatingIp.floating_ip_address;
@@ -198,6 +205,16 @@ async function processRun(runId: string) {
           "WARN",
           "Задача остановлена автоматически: Timeweb не разрешает создать Floating IP без доступного баланса или месячного лимита.",
         );
+        await prisma.run.update({
+          where: { id: runId },
+          data: { status: "FAILED", stoppedAt: new Date() },
+        });
+        return;
+      }
+
+      if (error instanceof RegRuApiError && error.fatal) {
+        await appendRunLog(runId, "ERROR", error.message);
+        await appendRunLog(runId, "WARN", "Задача остановлена автоматически: ошибка Reg.ru не исправится повторными попытками.");
         await prisma.run.update({
           where: { id: runId },
           data: { status: "FAILED", stoppedAt: new Date() },

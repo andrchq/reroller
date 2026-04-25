@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { createAccountAction } from "@/lib/actions";
 
-type Provider = "selectel" | "timeweb";
+type Provider = "selectel" | "timeweb" | "regru";
 
 const providerHints: Record<Provider, string> = {
   selectel: "Нужны данные service user: ID аккаунта, имя пользователя и пароль.",
   timeweb: "Нужен только API token из панели Timeweb Cloud.",
+  regru: "Нужен CloudVPS API token из настроек облачного окружения Reg.ru.",
 };
 
 export function AccountForm() {
@@ -26,11 +27,16 @@ export function AccountForm() {
           >
             <option value="selectel">Selectel</option>
             <option value="timeweb">Timeweb Cloud</option>
+            <option value="regru">Reg.ru CloudVPS</option>
           </Select>
         </Field>
 
         <Field label="Название">
-          <Input name="name" required placeholder={provider === "selectel" ? "Selectel основной" : "Timeweb основной"} />
+          <Input
+            name="name"
+            required
+            placeholder={provider === "selectel" ? "Selectel основной" : provider === "timeweb" ? "Timeweb основной" : "Reg.ru основной"}
+          />
         </Field>
 
         {provider === "selectel" ? (
@@ -45,9 +51,13 @@ export function AccountForm() {
               <Input name="password" type="password" required autoComplete="new-password" />
             </Field>
           </>
-        ) : (
+        ) : provider === "timeweb" ? (
           <Field label="API token Timeweb Cloud">
             <Input name="password" type="password" required autoComplete="new-password" placeholder="eyJ..." />
+          </Field>
+        ) : (
+          <Field label="CloudVPS API token Reg.ru">
+            <Input name="password" type="password" required autoComplete="new-password" placeholder="0123456789abcdef" />
           </Field>
         )}
       </div>

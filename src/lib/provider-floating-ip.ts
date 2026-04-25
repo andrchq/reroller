@@ -1,4 +1,5 @@
 import type { ProviderAccount } from "@prisma/client";
+import { releaseRegRuFloatingIp } from "@/lib/regru";
 import { releaseFloatingIp } from "@/lib/selectel";
 import { releaseTimewebFloatingIp } from "@/lib/timeweb";
 
@@ -9,6 +10,14 @@ export async function releaseProviderFloatingIp(input: {
 }) {
   if (input.account.provider === "timeweb") {
     await releaseTimewebFloatingIp({
+      account: input.account,
+      floatingIpId: input.floatingIpId,
+    });
+    return;
+  }
+
+  if (input.account.provider === "regru") {
+    await releaseRegRuFloatingIp({
       account: input.account,
       floatingIpId: input.floatingIpId,
     });

@@ -60,7 +60,7 @@ export default async function AccountsPage() {
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-[#fff4d6]">Добавить провайдера</div>
             <InfoTip label="Какие данные нужны">
-              Для Selectel укажите service user credentials. Для Timeweb Cloud укажите API token из раздела API и Terraform.
+              Для Selectel укажите service user credentials. Для Timeweb Cloud и Reg.ru укажите API token.
             </InfoTip>
           </div>
           <AccountForm />
@@ -76,6 +76,10 @@ export default async function AccountsPage() {
             <HelpItem
               title="Timeweb Cloud"
               text="Создайте API token в панели Timeweb Cloud в разделе API и Terraform. После сохранения нажмите «Синхронизировать», чтобы получить проекты и зоны."
+            />
+            <HelpItem
+              title="Reg.ru CloudVPS"
+              text="Скопируйте API token в настройках облачного окружения Reg.ru. Синхронизация загрузит список серверов, а профиль будет создавать дополнительные IPv4 на выбранном сервере."
             />
             <HelpItem
               title="Профили"

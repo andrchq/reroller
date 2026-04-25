@@ -7,6 +7,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { enqueueRun } from "@/lib/queue";
+import { listRegRuServers } from "@/lib/regru";
 import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
 import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
 import { listTimewebProjects, listTimewebZones } from "@/lib/timeweb";
@@ -69,6 +70,28 @@ function formatSelectelSyncError(error: unknown) {
   return message || "Неизвестная ошибка синхронизации.";
 }
 
+function formatProviderSyncError(provider: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (provider === "selectel") return formatSelectelSyncError(error);
+
+  if (provider === "timeweb") {
+    if (message.includes("401") || message.includes("403")) {
+      return "Timeweb не принял API token. Проверьте токен и права доступа в панели Timeweb Cloud.";
+    }
+    return message || "Неизвестная ошибка синхронизации Timeweb.";
+  }
+
+  if (provider === "regru") {
+    if (message.includes("401") || message.includes("403") || message.toLowerCase().includes("token")) {
+      return "Reg.ru не принял CloudVPS API token. Проверьте токен в настройках облачного окружения Reg.ru.";
+    }
+    return message || "Неизвестная ошибка синхронизации Reg.ru.";
+  }
+
+  return message || "Неизвестная ошибка синхронизации.";
+}
+
 export async function loginAction(formData: FormData) {
   const login = requiredString(formData, "login").toLowerCase();
   const password = requiredString(formData, "password");
@@ -102,12 +125,13 @@ export async function createAccountAction(formData: FormData) {
   await requireUser();
   const provider = requiredString(formData, "provider");
   const secret = requiredString(formData, "password");
+  const tokenOnlyProvider = provider === "timeweb" || provider === "regru";
   await prisma.providerAccount.create({
     data: {
       name: requiredString(formData, "name"),
       provider,
-      accountId: provider === "timeweb" ? "timeweb" : requiredString(formData, "accountId"),
-      username: provider === "timeweb" ? "api-token" : requiredString(formData, "username"),
+      accountId: tokenOnlyProvider ? provider : requiredString(formData, "accountId"),
+      username: tokenOnlyProvider ? "api-token" : requiredString(formData, "username"),
       encryptedPassword: encryptSecret(secret),
     },
   });
@@ -126,8 +150,10 @@ export async function syncProjectsAction(formData: FormData) {
   try {
     const projects =
       account.provider === "timeweb"
-        ? (await listTimewebProjects(account)).map((project) => ({ id: String(project.id), name: project.name, url: undefined }))
-        : await listSelectelProjects(account);
+        ? (await listTimewebProjects(account)).map((project) => ({ id: String(project.id), name: project.name, url: undefined, regions: [] }))
+        : account.provider === "regru"
+          ? await listRegRuServers(account)
+          : (await listSelectelProjects(account)).map((project) => ({ ...project, regions: [] }));
     const timewebZones = account.provider === "timeweb" ? await listTimewebZones(account) : [];
     let syncedProjects = 0;
     let syncedRegions = 0;
@@ -157,6 +183,8 @@ export async function syncProjectsAction(formData: FormData) {
       let regions: string[] = [];
       if (account.provider === "timeweb") {
         regions = timewebZones;
+      } else if (account.provider === "regru") {
+        regions = project.regions;
       } else {
         try {
           const details = await getSelectelProjectDetails(account, project.id);
@@ -172,7 +200,7 @@ export async function syncProjectsAction(formData: FormData) {
       }
 
       if (regions.length === 0) {
-        regions = account.provider === "timeweb" ? ["spb-1", "msk-1"] : defaultSelectelRegions;
+        regions = account.provider === "timeweb" ? ["spb-1", "msk-1"] : account.provider === "regru" ? [] : defaultSelectelRegions;
       }
 
       await prisma.projectRegion.deleteMany({ where: { projectBindingId: binding.id } });
@@ -195,7 +223,7 @@ export async function syncProjectsAction(formData: FormData) {
     return {
       ok: false,
       title: "Ошибка синхронизации",
-      message: formatSelectelSyncError(error),
+      message: formatProviderSyncError(account.provider, error),
       details: "Проекты и регионы не обновлены.",
     };
   }
