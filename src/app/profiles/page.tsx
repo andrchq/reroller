@@ -1,7 +1,7 @@
 import { ProfileForm } from "@/components/profile-form";
 import { AppShell, PageHeader } from "@/components/shell";
 import { Badge, Button, Card } from "@/components/ui";
-import { startProfileAction } from "@/lib/actions";
+import { duplicateProfileAction, startProfileAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -55,10 +55,18 @@ export default async function ProfilesPage() {
                         {profile.targets.length > 6 ? <span className="rounded bg-white/5 px-2 py-1 text-xs text-[var(--muted)]">+{profile.targets.length - 6}</span> : null}
                       </div>
                     </div>
-                    <form action={startProfileAction}>
-                      <input type="hidden" name="profileId" value={profile.id} />
-                      <Button type="submit">Запустить</Button>
-                    </form>
+                    <div className="flex flex-wrap gap-2">
+                      <form action={startProfileAction}>
+                        <input type="hidden" name="profileId" value={profile.id} />
+                        <Button type="submit">Запустить</Button>
+                      </form>
+                      <form action={duplicateProfileAction}>
+                        <input type="hidden" name="profileId" value={profile.id} />
+                        <Button type="submit" className="border border-[var(--line)] bg-transparent text-[#f6c453] hover:bg-[#f6c453]/10">
+                          Дублировать
+                        </Button>
+                      </form>
+                    </div>
                   </div>
                   <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
                     <summary className="cursor-pointer text-sm font-medium text-[#f6c453]">Редактировать профиль</summary>

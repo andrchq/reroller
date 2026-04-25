@@ -267,6 +267,49 @@ export async function updateProfileAction(formData: FormData) {
   redirect("/profiles");
 }
 
+export async function duplicateProfileAction(formData: FormData) {
+  await requireUser();
+  const profileId = requiredString(formData, "profileId");
+  const profile = await prisma.searchProfile.findUnique({
+    where: { id: profileId },
+    include: {
+      selectedRegions: true,
+      targets: true,
+      rateLimit: true,
+    },
+  });
+  if (!profile) throw new Error("Profile not found");
+
+  const regions = profile.selectedRegions.length > 0 ? profile.selectedRegions.map((region) => region.name) : [profile.region];
+
+  await prisma.searchProfile.create({
+    data: {
+      name: `${profile.name} копия`,
+      providerAccountId: profile.providerAccountId,
+      projectBindingId: profile.projectBindingId,
+      region: regions[0],
+      selectedRegions: { create: regions.map((name) => ({ name })) },
+      targets: { create: profile.targets.map((target) => ({ value: target.value })) },
+      rateLimit: profile.rateLimit
+        ? {
+            create: {
+              requestsPerMinute: profile.rateLimit.requestsPerMinute,
+              minDelaySeconds: profile.rateLimit.minDelaySeconds,
+              maxDelaySeconds: profile.rateLimit.maxDelaySeconds,
+              errorDelaySeconds: profile.rateLimit.errorDelaySeconds,
+              maxRuntimeSeconds: profile.rateLimit.maxRuntimeSeconds,
+              maxFindings: profile.rateLimit.maxFindings,
+            },
+          }
+        : undefined,
+    },
+  });
+
+  revalidatePath("/profiles");
+  revalidatePath("/tasks");
+  redirect("/profiles");
+}
+
 export async function startProfileAction(formData: FormData) {
   await requireUser();
   const profileId = requiredString(formData, "profileId");
