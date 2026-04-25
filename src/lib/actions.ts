@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createSession, destroySession, hashPassword, requireUser, verifyPassword } from "@/lib/auth";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
+import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { enqueueRun } from "@/lib/queue";
 import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
 import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
@@ -330,6 +331,58 @@ export async function startProfileAction(formData: FormData) {
   revalidatePath("/runs");
   revalidatePath("/tasks");
   redirect(`/tasks?run=${run.id}`);
+}
+
+export async function continueRunAction(formData: FormData) {
+  await requireUser();
+  const runId = requiredString(formData, "runId");
+  const run = await prisma.run.findUnique({ where: { id: runId }, select: { searchProfileId: true } });
+  if (!run) throw new Error("Run not found");
+  const nextRun = await prisma.run.create({ data: { searchProfileId: run.searchProfileId, status: "QUEUED" } });
+  await enqueueRun(nextRun.id);
+  revalidatePath("/runs");
+  revalidatePath("/tasks");
+  redirect(`/tasks?run=${nextRun.id}`);
+}
+
+export async function continueFindingProfileAction(formData: FormData) {
+  await requireUser();
+  const findingId = requiredString(formData, "findingId");
+  const finding = await prisma.finding.findUnique({ where: { id: findingId }, select: { searchProfileId: true } });
+  if (!finding) throw new Error("Finding not found");
+  const run = await prisma.run.create({ data: { searchProfileId: finding.searchProfileId, status: "QUEUED" } });
+  await enqueueRun(run.id);
+  revalidatePath("/findings");
+  revalidatePath("/tasks");
+  redirect(`/tasks?run=${run.id}`);
+}
+
+export async function deleteFindingAction(formData: FormData) {
+  await requireUser();
+  const findingId = requiredString(formData, "findingId");
+  const finding = await prisma.finding.findUnique({
+    where: { id: findingId },
+    include: {
+      searchProfile: {
+        include: {
+          providerAccount: true,
+          projectBinding: true,
+        },
+      },
+    },
+  });
+  if (!finding) throw new Error("Finding not found");
+
+  await releaseProviderFloatingIp({
+    account: finding.searchProfile.providerAccount,
+    projectName: finding.searchProfile.projectBinding.name,
+    floatingIpId: finding.floatingIpId,
+  });
+  await prisma.finding.delete({ where: { id: finding.id } });
+
+  revalidatePath("/findings");
+  revalidatePath("/tasks");
+  redirect("/findings");
 }
 
 export async function stopRunAction(formData: FormData) {

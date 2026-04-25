@@ -1,7 +1,7 @@
 import { LiveRunLogs } from "@/components/live-run-logs";
 import { AppShell, PageHeader } from "@/components/shell";
 import { Badge, Button, Card, LinkButton } from "@/components/ui";
-import { startProfileAction, stopProfileRunsAction, stopRunAction } from "@/lib/actions";
+import { continueRunAction, startProfileAction, stopProfileRunsAction, stopRunAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { runStatusLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
@@ -172,7 +172,12 @@ export default async function TasksPage({
                       Остановить
                     </Button>
                   </form>
-                ) : null}
+                ) : (
+                  <form action={continueRunAction}>
+                    <input type="hidden" name="runId" value={selected.id} />
+                    <Button type="submit">Продолжить поиск</Button>
+                  </form>
+                )}
               </div>
               <LiveRunLogs
                 key={selected.id}

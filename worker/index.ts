@@ -1,8 +1,9 @@
 import { Worker } from "bullmq";
-import { allocateFloatingIp, releaseFloatingIp, SelectelApiError } from "@/lib/selectel";
-import { allocateTimewebFloatingIp, releaseTimewebFloatingIp } from "@/lib/timeweb";
+import { allocateFloatingIp, SelectelApiError } from "@/lib/selectel";
+import { allocateTimewebFloatingIp } from "@/lib/timeweb";
 import { findMatchedTarget } from "@/lib/ip-matcher";
 import { prisma } from "@/lib/prisma";
+import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { createRedisConnection, runQueueName, type RunJob } from "@/lib/queue";
 import { appendRunLog } from "@/lib/run-log";
 import { buildFindingMessage, sendTelegramMessage } from "@/lib/telegram";
@@ -180,18 +181,11 @@ async function processRun(runId: string) {
       }
 
       await appendRunLog(runId, "INFO", `IP ${address} не совпал, удаляю Floating IP`);
-      if (profile.providerAccount.provider === "timeweb") {
-        await releaseTimewebFloatingIp({
-          account: profile.providerAccount,
-          floatingIpId: floatingIp.id,
-        });
-      } else {
-        await releaseFloatingIp({
-          account: profile.providerAccount,
-          projectName: profile.projectBinding.name,
-          floatingIpId: floatingIp.id,
-        });
-      }
+      await releaseProviderFloatingIp({
+        account: profile.providerAccount,
+        projectName: profile.projectBinding.name,
+        floatingIpId: floatingIp.id,
+      });
 
       const delaySeconds = randomInt(delayMinSeconds, delayMaxSeconds);
       await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);
