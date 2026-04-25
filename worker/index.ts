@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import { allocateFloatingIp, releaseFloatingIp, SelectelApiError } from "@/lib/selectel";
+import { allocateTimewebFloatingIp, releaseTimewebFloatingIp } from "@/lib/timeweb";
 import { findMatchedTarget } from "@/lib/ip-matcher";
 import { prisma } from "@/lib/prisma";
 import { createRedisConnection, runQueueName, type RunJob } from "@/lib/queue";
@@ -111,13 +112,19 @@ async function processRun(runId: string) {
       const requestedIp = targets.find((target) => !target.includes("/"));
       await appendRunLog(runId, "INFO", `Попытка ${attempt}: запрос Floating IP в ${selectedRegion}`);
       requestTimestamps.push(Date.now());
-      const floatingIp = await allocateFloatingIp({
-        account: profile.providerAccount,
-        projectId: profile.projectBinding.externalProjectId,
-        projectName: profile.projectBinding.name,
-        region: selectedRegion,
-        requestedIp,
-      });
+      const floatingIp =
+        profile.providerAccount.provider === "timeweb"
+          ? await allocateTimewebFloatingIp({
+              account: profile.providerAccount,
+              region: selectedRegion,
+            })
+          : await allocateFloatingIp({
+              account: profile.providerAccount,
+              projectId: profile.projectBinding.externalProjectId,
+              projectName: profile.projectBinding.name,
+              region: selectedRegion,
+              requestedIp,
+            });
 
       consecutiveErrors = 0;
       const address = floatingIp.floating_ip_address;
@@ -173,11 +180,18 @@ async function processRun(runId: string) {
       }
 
       await appendRunLog(runId, "INFO", `IP ${address} не совпал, удаляю Floating IP`);
-      await releaseFloatingIp({
-        account: profile.providerAccount,
-        projectName: profile.projectBinding.name,
-        floatingIpId: floatingIp.id,
-      });
+      if (profile.providerAccount.provider === "timeweb") {
+        await releaseTimewebFloatingIp({
+          account: profile.providerAccount,
+          floatingIpId: floatingIp.id,
+        });
+      } else {
+        await releaseFloatingIp({
+          account: profile.providerAccount,
+          projectName: profile.projectBinding.name,
+          floatingIpId: floatingIp.id,
+        });
+      }
 
       const delaySeconds = randomInt(delayMinSeconds, delayMaxSeconds);
       await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);

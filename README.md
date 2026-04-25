@@ -1,6 +1,6 @@
 # Reroller
 
-Private Next.js panel for Selectel Floating IP allocation.
+Private Next.js panel for autonomous public IP allocation across cloud providers.
 
 ## Stack
 
@@ -28,7 +28,7 @@ In another terminal run the worker:
 npm run worker
 ```
 
-Open `http://localhost:4040`, create the first admin, add a Selectel account, sync projects, create a profile, and start a run.
+Open `http://localhost:4040`, create the first admin, add a provider account, sync projects, create a profile, and start a run.
 
 ## Docker
 
@@ -171,6 +171,11 @@ If you open the panel directly by `http://SERVER_IP:4040`, keep:
 AUTH_COOKIE_SECURE="false"
 ```
 
-## Selectel Flow
+## Provider Flow
 
-The worker authenticates with Selectel IAM, creates a Floating IP for the selected project and region, compares the returned address with profile targets, keeps matched IPs, and deletes misses immediately.
+The worker authenticates with the selected provider, creates a Floating IP for the selected project and zone, compares the returned address with profile targets, keeps matched IPs, and deletes misses immediately.
+
+Supported providers:
+
+- Selectel
+- Timeweb Cloud

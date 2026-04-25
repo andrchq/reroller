@@ -1,9 +1,10 @@
 import { AppShell, PageHeader } from "@/components/shell";
-import { Button, Card, Field, InfoTip, Input } from "@/components/ui";
+import { Button, Card, Field, InfoTip, Input, Select } from "@/components/ui";
 import { SyncProjectsButton } from "@/components/sync-projects-button";
 import { createAccountAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { providerLabel } from "@/lib/providers";
 
 export default async function AccountsPage() {
   await requireUser();
@@ -14,7 +15,7 @@ export default async function AccountsPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Аккаунты" description="Учетные данные Selectel и синхронизация проектов." />
+      <PageHeader title="Аккаунты" description="Учетные данные провайдеров и синхронизация проектов/зон." />
       <div className="grid gap-4 xl:grid-cols-[1fr_24rem_22rem]">
         <Card>
           <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Список аккаунтов</div>
@@ -23,8 +24,17 @@ export default async function AccountsPage() {
               <div key={account.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="font-medium text-[#fff4d6]">{account.name}</div>
-                    <div className="text-sm text-[var(--muted)]">ID аккаунта: {account.accountId} / Пользователь: {account.username}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-[#fff4d6]">{account.name}</div>
+                      <span className="rounded-full border border-[#f6c453]/20 bg-[#f6c453]/10 px-2 py-0.5 text-xs text-[#f6c453]">
+                        {providerLabel(account.provider)}
+                      </span>
+                    </div>
+                    {account.provider === "selectel" ? (
+                      <div className="text-sm text-[var(--muted)]">ID аккаунта: {account.accountId} / Пользователь: {account.username}</div>
+                    ) : (
+                      <div className="text-sm text-[var(--muted)]">API token сохранен зашифрованно</div>
+                    )}
                     <div className="mt-1 text-xs text-[var(--muted)]">Проектов: {account.projects.length}</div>
                   </div>
                   <SyncProjectsButton accountId={account.id} />
@@ -33,7 +43,7 @@ export default async function AccountsPage() {
                   <div className="mt-3 grid gap-1 text-xs text-[var(--muted)]">
                     {account.projects.map((project) => (
                       <div key={project.id}>
-                        {project.name}: {project.regions.length > 0 ? project.regions.map((region) => region.name).join(", ") : "регионов нет"}
+                        {project.name}: {project.regions.length > 0 ? project.regions.map((region) => region.name).join(", ") : "зон нет"}
                       </div>
                     ))}
                   </div>
@@ -46,22 +56,28 @@ export default async function AccountsPage() {
 
         <Card>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-[#fff4d6]">Добавить Selectel</div>
-            <InfoTip label="Какой доступ нужен">
-              Создайте сервисного пользователя в Selectel и выдайте ему роль <b>vpc.admin</b> в области доступа <b>Проект</b> на тот проект, где нужно подбирать публичные IP.
+            <div className="text-sm font-semibold text-[#fff4d6]">Добавить провайдера</div>
+            <InfoTip label="Какие данные нужны">
+              Для Selectel укажите service user credentials. Для Timeweb Cloud укажите API token из раздела API и Terraform.
             </InfoTip>
           </div>
           <form action={createAccountAction} className="grid gap-3">
+            <Field label="Провайдер">
+              <Select name="provider" required defaultValue="selectel">
+                <option value="selectel">Selectel</option>
+                <option value="timeweb">Timeweb Cloud</option>
+              </Select>
+            </Field>
             <Field label="Название">
-              <Input name="name" required placeholder="Основной Selectel" />
+              <Input name="name" required placeholder="Основной аккаунт" />
             </Field>
-            <Field label="ID аккаунта">
-              <Input name="accountId" required />
+            <Field label="ID аккаунта Selectel">
+              <Input name="accountId" placeholder="Для Timeweb можно оставить пустым" />
             </Field>
-            <Field label="Имя сервисного пользователя">
-              <Input name="username" required />
+            <Field label="Имя service user Selectel">
+              <Input name="username" placeholder="Для Timeweb можно оставить пустым" />
             </Field>
-            <Field label="Пароль сервисного пользователя">
+            <Field label="Пароль Selectel или API token Timeweb">
               <Input name="password" type="password" required />
             </Field>
             <Button type="submit">Сохранить аккаунт</Button>
@@ -69,37 +85,20 @@ export default async function AccountsPage() {
         </Card>
 
         <Card>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-[#fff4d6]">Подсказка по Selectel</div>
-            <InfoTip label="Где создать пользователя">
-              В панели Selectel откройте управление доступом, создайте сервисного пользователя, затем в настройках доступа добавьте разрешение на проект.
-            </InfoTip>
-          </div>
+          <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Подсказки</div>
           <div className="grid gap-3 text-sm text-[#cfc2a4]">
             <HelpItem
-              title="1. Создайте сервисного пользователя"
-              text="В Selectel перейдите в управление доступом и создайте сервисного пользователя. В Reroller укажите его имя и пароль."
+              title="Selectel"
+              text="Создайте сервисного пользователя, выдайте роль vpc.admin на нужный проект, затем сохраните ID аккаунта, имя пользователя и пароль."
             />
             <HelpItem
-              title="2. Выберите область доступа"
-              text="В разрешении выберите область доступа «Проекты» и конкретный проект, где будут резервироваться IP."
+              title="Timeweb Cloud"
+              text="Создайте API token в панели Timeweb Cloud в разделе API и Terraform. После сохранения нажмите «Синхронизировать», чтобы получить проекты и зоны."
             />
             <HelpItem
-              title="3. Назначьте роль"
-              text="Для работы с публичными IP нужна роль vpc.admin. Она дает создание и удаление публичных IP в выбранном проекте."
+              title="Профили"
+              text="После синхронизации создайте профиль поиска. Панель использует общую модель: проект, зоны, список целевых IP/CIDR и лимитер."
             />
-            <HelpItem
-              title="4. Синхронизируйте проекты"
-              text="После сохранения аккаунта нажмите «Синхронизировать», затем создайте профиль поиска на странице «Профили»."
-            />
-            <a
-              href="https://docs.selectel.ru/access-control/role-reference/"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-medium text-[#f6c453] hover:underline"
-            >
-              Открыть справочник ролей Selectel
-            </a>
           </div>
         </Card>
       </div>

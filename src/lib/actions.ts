@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { enqueueRun } from "@/lib/queue";
 import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
 import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
+import { listTimewebProjects, listTimewebZones } from "@/lib/timeweb";
 import { splitLines } from "@/lib/utils";
 
 function requiredString(formData: FormData, key: string) {
@@ -98,12 +99,15 @@ export async function createInitialAdminAction(formData: FormData) {
 
 export async function createAccountAction(formData: FormData) {
   await requireUser();
+  const provider = requiredString(formData, "provider");
+  const secret = requiredString(formData, "password");
   await prisma.providerAccount.create({
     data: {
       name: requiredString(formData, "name"),
-      accountId: requiredString(formData, "accountId"),
-      username: requiredString(formData, "username"),
-      encryptedPassword: encryptSecret(requiredString(formData, "password")),
+      provider,
+      accountId: provider === "timeweb" ? "timeweb" : requiredString(formData, "accountId"),
+      username: provider === "timeweb" ? "api-token" : requiredString(formData, "username"),
+      encryptedPassword: encryptSecret(secret),
     },
   });
   revalidatePath("/accounts");
@@ -119,7 +123,11 @@ export async function syncProjectsAction(formData: FormData) {
   }
 
   try {
-    const projects = await listSelectelProjects(account);
+    const projects =
+      account.provider === "timeweb"
+        ? (await listTimewebProjects(account)).map((project) => ({ id: String(project.id), name: project.name, url: undefined }))
+        : await listSelectelProjects(account);
+    const timewebZones = account.provider === "timeweb" ? await listTimewebZones(account) : [];
     let syncedProjects = 0;
     let syncedRegions = 0;
     const notes = new Set<string>();
@@ -146,20 +154,24 @@ export async function syncProjectsAction(formData: FormData) {
       syncedProjects += 1;
 
       let regions: string[] = [];
-      try {
-        const details = await getSelectelProjectDetails(account, project.id);
-        regions = extractProjectRegions(details);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("policy_does_not_allow_this_request") || message.includes("403 Forbidden")) {
-          notes.add("Selectel не разрешил читать квоты проекта, поэтому использован стандартный список регионов.");
-        } else {
-          notes.add(`Не удалось прочитать квоты проекта «${project.name}», поэтому использован стандартный список регионов.`);
+      if (account.provider === "timeweb") {
+        regions = timewebZones;
+      } else {
+        try {
+          const details = await getSelectelProjectDetails(account, project.id);
+          regions = extractProjectRegions(details);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes("policy_does_not_allow_this_request") || message.includes("403 Forbidden")) {
+            notes.add("Selectel не разрешил читать квоты проекта, поэтому использован стандартный список регионов.");
+          } else {
+            notes.add(`Не удалось прочитать квоты проекта «${project.name}», поэтому использован стандартный список регионов.`);
+          }
         }
       }
 
       if (regions.length === 0) {
-        regions = defaultSelectelRegions;
+        regions = account.provider === "timeweb" ? ["spb-1", "msk-1"] : defaultSelectelRegions;
       }
 
       await prisma.projectRegion.deleteMany({ where: { projectBindingId: binding.id } });

@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "Reroller",
-  description: "Панель подбора и резервирования IP Selectel",
+  description: "Панель подбора и резервирования публичных IP у облачных провайдеров",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

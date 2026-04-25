@@ -22,6 +22,7 @@ export default async function ProfilesPage() {
     id: project.id,
     label: `${project.providerAccount.name} / ${project.name}`,
     regions: project.regions.map((region) => region.name),
+    provider: project.providerAccount.provider,
   }));
 
   return (

@@ -9,6 +9,7 @@ type ProjectOption = {
   id: string;
   label: string;
   regions: string[];
+  provider: string;
 };
 
 type ProfileDefaults = {
@@ -44,7 +45,10 @@ export function ProfileForm({
   const [selectedRegions, setSelectedRegions] = useState(
     profile?.regions.length ? profile.regions : profile?.region ? [profile.region] : regions[0] ? [regions[0]] : [],
   );
-  const regionGroups = selectelZoneGroups(regions);
+  const regionGroups: Record<string, Array<{ name: string; city: string; label: string; badge?: string }>> =
+    selectedProject?.provider === "selectel"
+      ? selectelZoneGroups(regions)
+      : { "Зоны провайдера": regions.map((name) => ({ name, city: "Зоны провайдера", label: "Зона доступности" })) };
   const action = profile ? updateProfileAction : createProfileAction;
   const content = (
     <>
