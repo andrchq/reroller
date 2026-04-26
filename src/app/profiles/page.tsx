@@ -106,6 +106,8 @@ export default async function ProfilesPage({
                           maxFindings: profile.rateLimit?.maxFindings ?? 1,
                           serverWaitIntervalSeconds: profile.rateLimit?.serverWaitIntervalSeconds ?? 10,
                           serverWaitMaxSeconds: profile.rateLimit?.serverWaitMaxSeconds ?? 240,
+                          restMinMinutes: profile.rateLimit?.restMinMinutes ?? 10,
+                          restMaxMinutes: profile.rateLimit?.restMaxMinutes ?? 20,
                         }}
                       />
                     </div>

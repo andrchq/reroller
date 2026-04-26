@@ -38,6 +38,8 @@ function optionalNumber(formData: FormData, key: string, fallback: number) {
 function rateLimitInput(formData: FormData) {
   const minDelaySeconds = optionalNumber(formData, "minDelaySeconds", 10);
   const maxDelaySeconds = Math.max(minDelaySeconds, optionalNumber(formData, "maxDelaySeconds", 30));
+  const restMinMinutes = optionalNumber(formData, "restMinMinutes", 10);
+  const restMaxMinutes = Math.max(restMinMinutes, optionalNumber(formData, "restMaxMinutes", 20));
 
   return {
     requestsPerMinute: optionalNumber(formData, "requestsPerMinute", 6),
@@ -48,6 +50,8 @@ function rateLimitInput(formData: FormData) {
     maxFindings: optionalNumber(formData, "maxFindings", 1),
     serverWaitIntervalSeconds: optionalNumber(formData, "serverWaitIntervalSeconds", 10),
     serverWaitMaxSeconds: optionalNumber(formData, "serverWaitMaxSeconds", 240),
+    restMinMinutes,
+    restMaxMinutes,
   };
 }
 
@@ -380,6 +384,8 @@ export async function duplicateProfileAction(formData: FormData) {
               maxFindings: profile.rateLimit.maxFindings,
               serverWaitIntervalSeconds: profile.rateLimit.serverWaitIntervalSeconds,
               serverWaitMaxSeconds: profile.rateLimit.serverWaitMaxSeconds,
+              restMinMinutes: profile.rateLimit.restMinMinutes,
+              restMaxMinutes: profile.rateLimit.restMaxMinutes,
             },
           }
         : undefined,

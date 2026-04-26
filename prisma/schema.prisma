@@ -132,6 +132,8 @@ model RateLimitPolicy {
   maxFindings        Int           @default(1)
   serverWaitIntervalSeconds Int    @default(10)
   serverWaitMaxSeconds      Int    @default(240)
+  restMinMinutes     Int           @default(10)
+  restMaxMinutes     Int           @default(20)
 }
 
 model Run {

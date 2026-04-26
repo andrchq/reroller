@@ -62,6 +62,10 @@ function timewebDailyLimitRetryMs() {
   return 2 * 60 * 60 * 1000;
 }
 
+function periodicRestIntervalMs() {
+  return 2 * 60 * 60 * 1000;
+}
+
 function moscowDayKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Moscow",
@@ -235,7 +239,10 @@ async function processRun(runId: string) {
   const maxFindings = Math.max(1, rateLimit?.maxFindings ?? 1);
   const serverWaitIntervalSeconds = Math.max(5, rateLimit?.serverWaitIntervalSeconds ?? 10);
   const serverWaitMaxSeconds = Math.max(60, rateLimit?.serverWaitMaxSeconds ?? 240);
+  const restMinMinutes = Math.max(1, rateLimit?.restMinMinutes ?? 10);
+  const restMaxMinutes = Math.max(restMinMinutes, rateLimit?.restMaxMinutes ?? 20);
   let deadline = Date.now() + maxRuntimeSeconds * 1000;
+  let nextRestAt = Date.now() + periodicRestIntervalMs();
   const requestTimestamps: number[] = [];
   const regionCooldownUntil = new Map<string, number>();
   const dailyUsageOperation = "floating-ip-create";
@@ -251,13 +258,27 @@ async function processRun(runId: string) {
   await appendRunLog(
     runId,
     "INFO",
-    `Запуск профиля "${profile.name}". Зоны: ${regions.join(", ")}. Время работы: ${maxRuntimeSeconds} сек. Задержка: ${delayMinSeconds}-${delayMaxSeconds} сек. Лимит: ${requestsPerMinute}/мин. Лимит находок: ${maxFindings}.`,
+    `Запуск профиля "${profile.name}". Зоны: ${regions.join(", ")}. Время работы: ${maxRuntimeSeconds} сек. Задержка: ${delayMinSeconds}-${delayMaxSeconds} сек. Лимит: ${requestsPerMinute}/мин. Лимит находок: ${maxFindings}. Плановый отдых: каждые 120 мин на ${restMinMinutes}-${restMaxMinutes} мин.`,
   );
 
   for (let attempt = run.attempts + 1; Date.now() < deadline && foundCount < maxFindings; attempt += 1) {
     if (await runWasStopped(runId)) {
       await appendRunLog(runId, "WARN", "Запуск остановлен оператором перед следующей попыткой");
       return;
+    }
+
+    if (Date.now() >= nextRestAt) {
+      const restMinutes = randomInt(restMinMinutes, restMaxMinutes);
+      const restMs = restMinutes * 60_000;
+      await appendRunLog(runId, "INFO", `Плановый отдых задачи: ${restMinutes} мин. Следующая попытка после паузы.`);
+      const canContinue = await waitUntilRetryOrStop(runId, restMs);
+      if (!canContinue) {
+        await appendRunLog(runId, "WARN", "Запуск остановлен оператором во время планового отдыха");
+        return;
+      }
+      deadline += restMs;
+      nextRestAt = Date.now() + periodicRestIntervalMs();
+      continue;
     }
 
     const now = Date.now();
@@ -308,6 +329,7 @@ async function processRun(runId: string) {
             return;
           }
           deadline += retryMs;
+          nextRestAt += retryMs;
           continue;
         }
       }
@@ -453,6 +475,7 @@ async function processRun(runId: string) {
           return;
         }
         deadline += retryMs;
+        nextRestAt += retryMs;
         continue;
       }
 

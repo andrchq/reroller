@@ -27,6 +27,8 @@ type ProfileDefaults = {
   maxFindings: number;
   serverWaitIntervalSeconds: number;
   serverWaitMaxSeconds: number;
+  restMinMinutes: number;
+  restMaxMinutes: number;
 };
 
 export function ProfileForm({
@@ -163,6 +165,12 @@ export function ProfileForm({
           </Field>
           <Field label="Лимит найденных IP">
             <Input name="maxFindings" type="number" defaultValue={profile?.maxFindings ?? 1} min={1} />
+          </Field>
+          <Field label="Мин. отдых, мин">
+            <Input name="restMinMinutes" type="number" defaultValue={profile?.restMinMinutes ?? 10} min={1} />
+          </Field>
+          <Field label="Макс. отдых, мин">
+            <Input name="restMaxMinutes" type="number" defaultValue={profile?.restMaxMinutes ?? 20} min={1} />
           </Field>
         </div>
         <Button type="submit" disabled={projects.length === 0 || regions.length === 0 || selectedRegions.length === 0}>
