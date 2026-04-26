@@ -393,11 +393,19 @@ async function processRun(runId: string) {
       }
 
       await appendRunLog(runId, "INFO", `IP ${address} не совпал, удаляю Floating IP`);
-      await releaseProviderFloatingIp({
+      const cleanup = await releaseProviderFloatingIp({
         account: profile.providerAccount,
+        projectId: profile.projectBinding.externalProjectId,
         projectName: profile.projectBinding.name,
         floatingIpId: floatingIp.id,
       });
+      if (cleanup) {
+        await appendRunLog(
+          runId,
+          "INFO",
+          `Очистка сетевых ресурсов завершена. Подсетей: ${cleanup.subnetsDeleted}, портов роутера: ${cleanup.routerPortsDeleted}, роутеров: ${cleanup.routersDeleted}, сетей: ${cleanup.networksDeleted}, пропущено: ${cleanup.subnetsSkipped + cleanup.networkSkipped}.`,
+        );
+      }
 
       const delaySeconds = randomInt(delayMinSeconds, delayMaxSeconds);
       await appendRunLog(runId, "INFO", `Пауза перед следующей попыткой: ${delaySeconds} сек.`);

@@ -1,6 +1,7 @@
 import type { ProviderAccount } from "@prisma/client";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
+import { wait } from "@/lib/utils";
 
 const identityUrl = "https://cloud.api.selcloud.ru/identity/v3/auth/tokens";
 const vpcUrl = "https://api.selectel.ru/vpc/resell/v2";
@@ -499,7 +500,11 @@ export async function allocateFloatingIp(input: {
   if (!floatingIp) {
     throw new Error(`Selectel floating IP create returned an unexpected payload: ${shortPayload(payload)}`);
   }
-  return floatingIp;
+  return waitForSelectelFloatingIpCreated({
+    account: input.account,
+    projectName: input.projectName,
+    floatingIp,
+  });
 }
 
 export async function listFloatingIps(input: {
@@ -570,6 +575,7 @@ export async function releaseFloatingIp(input: {
   if (!response.ok && response.status !== 404) {
     throw new Error(`Selectel floating IP delete failed: ${await readError(response)}`);
   }
+  await waitForSelectelFloatingIpDeleted(input);
 }
 
 async function openStackFetch(input: {
@@ -615,6 +621,52 @@ function neutronUrl(baseUrl: string, path: string) {
   return normalizedBase.endsWith("/v2.0")
     ? `${normalizedBase}/${normalizedPath.replace(/^v2\.0\//, "")}`
     : `${normalizedBase}/${normalizedPath}`;
+}
+
+export async function getFloatingIp(input: {
+  account: ProviderAccount;
+  projectName: string;
+  floatingIpId: string;
+}) {
+  const response = await selectelFetch(
+    input.account,
+    `/floatingips/${input.floatingIpId}`,
+    { method: "GET" },
+    { scope: { type: "project", projectName: input.projectName } },
+  );
+  if (response.status === 404 || response.status === 400) return null;
+  if (!response.ok) throw await buildSelectelError(response, "Selectel floating IP get failed");
+  return normalizeFloatingIpPayload(await response.json());
+}
+
+async function waitForSelectelFloatingIpDeleted(input: {
+  account: ProviderAccount;
+  projectName: string;
+  floatingIpId: string;
+}) {
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    const existing = await getFloatingIp(input).catch(() => null);
+    if (!existing) return;
+    await wait(Math.min(2_000 + attempt * 500, 10_000));
+  }
+  throw new Error(`Selectel floating IP ${input.floatingIpId} deletion was not confirmed`);
+}
+
+async function waitForSelectelFloatingIpCreated(input: {
+  account: ProviderAccount;
+  projectName: string;
+  floatingIp: SelectelFloatingIp;
+}) {
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    const existing = await getFloatingIp({
+      account: input.account,
+      projectName: input.projectName,
+      floatingIpId: input.floatingIp.id,
+    }).catch(() => null);
+    if (existing?.floating_ip_address) return existing;
+    await wait(Math.min(1_000 + attempt * 500, 8_000));
+  }
+  throw new Error(`Selectel floating IP ${input.floatingIp.id} creation was not confirmed`);
 }
 
 export async function cleanupSelectelOpenStackNetworkResources(input: {
@@ -685,4 +737,44 @@ export async function cleanupSelectelOpenStackNetworkResources(input: {
   }
 
   return result;
+}
+
+export async function cleanupEmptySelectelNetworkResources(input: {
+  account: ProviderAccount;
+  projectId: string;
+  projectName: string;
+}) {
+  const subnets = await listSubnets(input);
+  const cleanupSubnets = subnets.filter((subnet) => subnet.servers.length === 0);
+  const networkIds = [...new Set(cleanupSubnets.map((subnet) => subnet.network_id).filter(Boolean))];
+  const openStackCleanup = await cleanupSelectelOpenStackNetworkResources({
+    account: input.account,
+    projectId: input.projectId,
+    projectName: input.projectName,
+    networkIds,
+  }).catch(() => null);
+
+  let subnetsDeleted = 0;
+  let subnetsSkipped = 0;
+  for (const subnet of cleanupSubnets) {
+    try {
+      await deleteSubnet({
+        account: input.account,
+        projectName: input.projectName,
+        subnetId: subnet.subnet_id,
+      });
+      subnetsDeleted += 1;
+    } catch {
+      subnetsSkipped += 1;
+    }
+  }
+
+  return {
+    subnetsDeleted,
+    subnetsSkipped: subnetsSkipped + subnets.length - cleanupSubnets.length,
+    routerPortsDeleted: openStackCleanup?.routerPortsDeleted ?? 0,
+    routersDeleted: openStackCleanup?.routersDeleted ?? 0,
+    networksDeleted: openStackCleanup?.networksDeleted ?? 0,
+    networkSkipped: openStackCleanup?.skipped ?? 0,
+  };
 }

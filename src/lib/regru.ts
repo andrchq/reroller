@@ -242,6 +242,14 @@ async function getRegRuServer(account: ProviderAccount, serverId: string) {
   return payload.reglet ?? null;
 }
 
+async function getRegRuServerOptional(account: ProviderAccount, serverId: string) {
+  const response = await regRuFetch(account, `/v1/reglets/${encodeURIComponent(serverId)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw await createRegRuApiError("server details", response);
+  const payload = (await response.json()) as { reglet?: RegRuReglet };
+  return payload.reglet ?? null;
+}
+
 async function listRegRuServers(account: ProviderAccount) {
   const response = await regRuFetch(account, "/v1/reglets");
   if (!response.ok) throw await createRegRuApiError("servers list", response);
@@ -257,6 +265,16 @@ async function findRegRuServerByName(account: ProviderAccount, name: string) {
 async function deleteRegRuServer(account: ProviderAccount, serverId: string) {
   const response = await regRuFetch(account, `/v1/reglets/${encodeURIComponent(serverId)}`, { method: "DELETE" });
   if (!response.ok && response.status !== 404) throw await createRegRuApiError("server delete", response);
+  await waitForRegRuServerDeleted(account, serverId);
+}
+
+async function waitForRegRuServerDeleted(account: ProviderAccount, serverId: string) {
+  for (let attempt = 1; attempt <= 60; attempt += 1) {
+    const server = await getRegRuServerOptional(account, serverId).catch(() => null);
+    if (!server || server.archived_at || server.status === "archive") return;
+    await wait(Math.min(3_000 + attempt * 500, 15_000));
+  }
+  throw new Error(`Reg.ru server ${serverId} deletion was not confirmed`);
 }
 
 function isImageNotFoundError(error: unknown) {

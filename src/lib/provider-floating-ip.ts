@@ -1,10 +1,11 @@
 import type { ProviderAccount } from "@prisma/client";
 import { releaseRegRuFloatingIp } from "@/lib/regru";
-import { releaseFloatingIp } from "@/lib/selectel";
+import { cleanupEmptySelectelNetworkResources, releaseFloatingIp } from "@/lib/selectel";
 import { releaseTimewebFloatingIp } from "@/lib/timeweb";
 
 export async function releaseProviderFloatingIp(input: {
   account: ProviderAccount;
+  projectId?: string;
   projectName: string;
   floatingIpId: string;
 }) {
@@ -29,4 +30,12 @@ export async function releaseProviderFloatingIp(input: {
     projectName: input.projectName,
     floatingIpId: input.floatingIpId,
   });
+  if (input.projectId) {
+    return cleanupEmptySelectelNetworkResources({
+      account: input.account,
+      projectId: input.projectId,
+      projectName: input.projectName,
+    });
+  }
+  return undefined;
 }

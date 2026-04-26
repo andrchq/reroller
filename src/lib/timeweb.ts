@@ -1,5 +1,6 @@
 import type { ProviderAccount } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
+import { wait } from "@/lib/utils";
 
 const apiUrl = "https://api.timeweb.cloud";
 
@@ -150,7 +151,7 @@ export async function allocateTimewebFloatingIp(input: {
   const payload = await response.json();
   const floatingIp = normalizeTimewebFloatingIp(payload);
   if (!floatingIp) throw new Error(`Timeweb floating IP create returned an unexpected payload: ${JSON.stringify(payload).slice(0, 700)}`);
-  return floatingIp;
+  return waitForTimewebFloatingIpCreated({ account: input.account, floatingIp });
 }
 
 export async function releaseTimewebFloatingIp(input: {
@@ -161,4 +162,42 @@ export async function releaseTimewebFloatingIp(input: {
   if (!response.ok && response.status !== 404) {
     throw await createTimewebApiError("floating IP delete", response);
   }
+  await waitForTimewebFloatingIpDeleted(input);
+}
+
+async function getTimewebFloatingIp(input: {
+  account: ProviderAccount;
+  floatingIpId: string;
+}) {
+  const response = await timewebFetch(input.account, `/api/v1/floating-ips/${input.floatingIpId}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw await createTimewebApiError("floating IP get", response);
+  return normalizeTimewebFloatingIp(await response.json());
+}
+
+async function waitForTimewebFloatingIpDeleted(input: {
+  account: ProviderAccount;
+  floatingIpId: string;
+}) {
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    const existing = await getTimewebFloatingIp(input).catch(() => null);
+    if (!existing) return;
+    await wait(Math.min(2_000 + attempt * 500, 10_000));
+  }
+  throw new Error(`Timeweb floating IP ${input.floatingIpId} deletion was not confirmed`);
+}
+
+async function waitForTimewebFloatingIpCreated(input: {
+  account: ProviderAccount;
+  floatingIp: TimewebFloatingIp;
+}) {
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    const existing = await getTimewebFloatingIp({
+      account: input.account,
+      floatingIpId: input.floatingIp.id,
+    }).catch(() => null);
+    if (existing?.floating_ip_address) return existing;
+    await wait(Math.min(1_000 + attempt * 500, 8_000));
+  }
+  throw new Error(`Timeweb floating IP ${input.floatingIp.id} creation was not confirmed`);
 }
