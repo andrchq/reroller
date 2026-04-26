@@ -416,7 +416,6 @@ export async function allocateRegRuFloatingIp(input: {
   waitIntervalSeconds: number;
   waitMaxSeconds: number;
   onLog?: (message: string) => Promise<void>;
-  shouldContinue?: () => Promise<boolean>;
 }) {
   const plans = await listRegRuPlans(input.account, input.region);
   const planCandidates = selectPlanCandidates(plans);
@@ -464,10 +463,6 @@ export async function allocateRegRuFloatingIp(input: {
 
   for (let attempt = 1; ; attempt += 1) {
     await wait(waitIntervalSeconds * 1000);
-    if (input.shouldContinue && !(await input.shouldContinue())) {
-      await deleteRegRuServer(input.account, String(created.id));
-      throw new Error(`Reg.ru: ожидание IP для сервера ${created.id} остановлено оператором. Сервер удален автоматически.`);
-    }
     await input.onLog?.(`Reg.ru: проверка готовности сервера ${created.id}, попытка ${attempt}`);
     const current = await getRegRuServer(input.account, String(created.id));
     const floatingIp = current ? normalizeRegRuRegletIp(current) : null;

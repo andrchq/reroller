@@ -145,6 +145,19 @@ async function waitUntilRetryOrStop(runId: string, ms: number) {
   return true;
 }
 
+async function runWasStopped(runId: string) {
+  const current = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
+  return !current || current.status === "STOPPED";
+}
+
+async function stopBeforeNextAttempt(runId: string) {
+  await prisma.run.update({
+    where: { id: runId },
+    data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+  });
+  await appendRunLog(runId, "WARN", "Запуск остановлен оператором перед следующей попыткой");
+}
+
 function classifyFailureReason(error: unknown): FailureReason {
   if (error instanceof TimewebApiError) {
     if (error.code === "daily_limit_exceeded") return "DAILY_LIMIT";
@@ -242,9 +255,8 @@ async function processRun(runId: string) {
   );
 
   for (let attempt = run.attempts + 1; Date.now() < deadline && foundCount < maxFindings; attempt += 1) {
-    const current = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
-    if (!current || current.status === "STOPPED") {
-      await appendRunLog(runId, "WARN", "Запуск остановлен оператором");
+    if (await runWasStopped(runId)) {
+      await appendRunLog(runId, "WARN", "Запуск остановлен оператором перед следующей попыткой");
       return;
     }
 
@@ -318,10 +330,6 @@ async function processRun(runId: string) {
                 onLog: async (message) => {
                   await appendRunLog(runId, "INFO", message);
                 },
-                shouldContinue: async () => {
-                  const currentRun = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
-                  return currentRun?.status !== "STOPPED";
-                },
               })
             : await allocateFloatingIp({
                 account: profile.providerAccount,
@@ -377,6 +385,11 @@ async function processRun(runId: string) {
           await appendRunLog(runId, "WARN", "Telegram не настроен или уведомление не отправлено");
         }
 
+        if (await runWasStopped(runId)) {
+          await stopBeforeNextAttempt(runId);
+          return;
+        }
+
         if (foundCount >= maxFindings) {
           await appendRunLog(runId, "SUCCESS", `Достигнут лимит найденных IP: ${maxFindings}`);
           await prisma.run.update({
@@ -405,6 +418,11 @@ async function processRun(runId: string) {
           "INFO",
           `Очистка сетевых ресурсов завершена. Подсетей: ${cleanup.subnetsDeleted}, портов роутера: ${cleanup.routerPortsDeleted}, роутеров: ${cleanup.routersDeleted}, сетей: ${cleanup.networksDeleted}, пропущено: ${cleanup.subnetsSkipped + cleanup.networkSkipped}.`,
         );
+      }
+
+      if (await runWasStopped(runId)) {
+        await stopBeforeNextAttempt(runId);
+        return;
       }
 
       const delaySeconds = randomInt(delayMinSeconds, delayMaxSeconds);
