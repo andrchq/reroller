@@ -58,6 +58,10 @@ function timewebDailyFloatingIpLimit() {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 10;
 }
 
+function timewebDailyLimitRetryMs() {
+  return 2 * 60 * 60 * 1000;
+}
+
 function moscowDayKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Moscow",
@@ -129,6 +133,16 @@ function remainingMs(deadline: number) {
 async function waitWithDeadline(ms: number, deadline: number) {
   const delay = Math.min(ms, remainingMs(deadline));
   if (delay > 0) await wait(delay);
+}
+
+async function waitUntilRetryOrStop(runId: string, ms: number) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const current = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
+    if (!current || current.status === "STOPPED") return false;
+    await wait(Math.min(30_000, deadline - Date.now()));
+  }
+  return true;
 }
 
 function classifyFailureReason(error: unknown): FailureReason {
@@ -208,11 +222,10 @@ async function processRun(runId: string) {
   const maxFindings = Math.max(1, rateLimit?.maxFindings ?? 1);
   const serverWaitIntervalSeconds = Math.max(5, rateLimit?.serverWaitIntervalSeconds ?? 10);
   const serverWaitMaxSeconds = Math.max(60, rateLimit?.serverWaitMaxSeconds ?? 240);
-  const deadline = Date.now() + maxRuntimeSeconds * 1000;
+  let deadline = Date.now() + maxRuntimeSeconds * 1000;
   const requestTimestamps: number[] = [];
   const regionCooldownUntil = new Map<string, number>();
   const dailyUsageOperation = "floating-ip-create";
-  const day = moscowDayKey();
   const timewebDailyLimit = timewebDailyFloatingIpLimit();
   let consecutiveErrors = 0;
   let lastFailureReason: FailureReason | null = null;
@@ -261,6 +274,7 @@ async function processRun(runId: string) {
     try {
       const requestedIp = targets.find((target) => !target.includes("/"));
       if (profile.providerAccount.provider === "timeweb") {
+        const day = moscowDayKey();
         const usage = await getProviderDailyUsage({
           providerAccountId: profile.providerAccount.id,
           provider: "timeweb",
@@ -272,10 +286,17 @@ async function processRun(runId: string) {
           await appendRunLog(
             runId,
             "WARN",
-            `Timeweb: дневной лимит создания Floating IP уже исчерпан (${used}/${timewebDailyLimit}) за ${day}. Задача остановлена до сброса лимита.`,
+            `Timeweb: дневной лимит создания Floating IP исчерпан (${used}/${timewebDailyLimit}) за ${day}. Следующая проверка через 2 часа.`,
           );
-          await failRun(runId, "DAILY_LIMIT");
-          return;
+          lastFailureReason = "DAILY_LIMIT";
+          const retryMs = timewebDailyLimitRetryMs();
+          const canContinue = await waitUntilRetryOrStop(runId, retryMs);
+          if (!canContinue) {
+            await appendRunLog(runId, "WARN", "Запуск остановлен оператором");
+            return;
+          }
+          deadline += retryMs;
+          continue;
         }
       }
 
@@ -316,7 +337,7 @@ async function processRun(runId: string) {
           providerAccountId: profile.providerAccount.id,
           provider: "timeweb",
           operation: dailyUsageOperation,
-          day,
+          day: moscowDayKey(),
         });
       }
       const address = floatingIp.floating_ip_address;
@@ -383,6 +404,7 @@ async function processRun(runId: string) {
       await waitWithDeadline(delaySeconds * 1000, deadline);
     } catch (error) {
       if (error instanceof TimewebApiError && error.code === "daily_limit_exceeded") {
+        const day = moscowDayKey();
         await setProviderDailyUsage({
           providerAccountId: profile.providerAccount.id,
           provider: "timeweb",
@@ -394,10 +416,18 @@ async function processRun(runId: string) {
         await appendRunLog(
           runId,
           "WARN",
-          `Задача остановлена автоматически: Timeweb вернул daily_limit_exceeded. Лимит на ${day} зафиксирован как ${timewebDailyLimit}/${timewebDailyLimit}.`,
+          `Timeweb вернул daily_limit_exceeded. Лимит на ${day} зафиксирован как ${timewebDailyLimit}/${timewebDailyLimit}. Следующая проверка через 2 часа.`,
         );
-        await failRun(runId, "DAILY_LIMIT");
-        return;
+        consecutiveErrors = 0;
+        lastFailureReason = "DAILY_LIMIT";
+        const retryMs = timewebDailyLimitRetryMs();
+        const canContinue = await waitUntilRetryOrStop(runId, retryMs);
+        if (!canContinue) {
+          await appendRunLog(runId, "WARN", "Запуск остановлен оператором");
+          return;
+        }
+        deadline += retryMs;
+        continue;
       }
 
       if (error instanceof TimewebApiError && error.code === "no_balance_for_month") {
