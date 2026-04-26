@@ -1,7 +1,8 @@
 import { AccountForm } from "@/components/account-form";
 import { AppShell, PageHeader } from "@/components/shell";
 import { SyncProjectsButton } from "@/components/sync-projects-button";
-import { Badge, Card, ListCard, PageNotice, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, ListCard, PageNotice, SectionHeader } from "@/components/ui";
+import { deleteAccountAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { providerLabel } from "@/lib/providers";
@@ -77,7 +78,15 @@ export default async function AccountsPage({
                     )}
                     <div className="mt-1 text-xs text-[var(--muted)]">Проектов: {account.projects.length}</div>
                   </div>
-                  <SyncProjectsButton accountId={account.id} />
+                  <div className="flex flex-wrap gap-2">
+                    <SyncProjectsButton accountId={account.id} />
+                    <form action={deleteAccountAction}>
+                      <input type="hidden" name="accountDbId" value={account.id} />
+                      <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                        Удалить
+                      </Button>
+                    </form>
+                  </div>
                 </div>
                 {account.projects.length > 0 ? (
                   <div className="mt-3 grid gap-1.5 text-xs leading-5 text-[var(--muted)]">
@@ -91,6 +100,21 @@ export default async function AccountsPage({
                     ))}
                   </div>
                 ) : null}
+                <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-[#f6c453]">Редактировать аккаунт</summary>
+                  <div className="mt-3">
+                    <AccountForm
+                      framedTitle={false}
+                      account={{
+                        id: account.id,
+                        name: account.name,
+                        provider: account.provider as "selectel" | "timeweb" | "regru",
+                        accountId: account.accountId,
+                        username: account.username,
+                      }}
+                    />
+                  </div>
+                </details>
               </ListCard>
             ))}
             {accounts.length === 0 ? <div className="text-sm text-[var(--muted)]">Аккаунтов пока нет.</div> : null}

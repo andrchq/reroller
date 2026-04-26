@@ -1,7 +1,7 @@
 import { ProfileForm } from "@/components/profile-form";
 import { AppShell, PageHeader } from "@/components/shell";
 import { Badge, Button, Card, ListCard, PageNotice, SectionHeader } from "@/components/ui";
-import { cleanupSelectelProfileIpsAction, duplicateProfileAction, startProfileAction } from "@/lib/actions";
+import { cleanupSelectelProfileIpsAction, deleteProfileAction, duplicateProfileAction, startProfileAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -83,6 +83,12 @@ export default async function ProfilesPage({
                           </Button>
                         </form>
                       ) : null}
+                      <form action={deleteProfileAction}>
+                        <input type="hidden" name="profileId" value={profile.id} />
+                        <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                          Удалить
+                        </Button>
+                      </form>
                     </div>
                   </div>
                   <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">

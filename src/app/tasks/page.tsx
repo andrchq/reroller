@@ -1,7 +1,7 @@
 import { LiveRunLogs } from "@/components/live-run-logs";
 import { AppShell, PageHeader } from "@/components/shell";
-import { Badge, Button, Card, LinkButton, ListCard, SectionHeader } from "@/components/ui";
-import { continueRunAction, startProfileAction, stopProfileRunsAction, stopRunAction } from "@/lib/actions";
+import { Badge, Button, Card, LinkButton, ListCard, PageNotice, SectionHeader } from "@/components/ui";
+import { continueRunAction, deleteRunAction, startProfileAction, stopProfileRunsAction, stopRunAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { runStatusLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +21,7 @@ function pageLink(input: { runId?: string; history?: string; page?: number }) {
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ run?: string; history?: string; page?: string }>;
+  searchParams: Promise<{ run?: string; history?: string; page?: string; deleteNotice?: string }>;
 }) {
   await requireUser();
   const params = await searchParams;
@@ -66,6 +66,7 @@ export default async function TasksPage({
   return (
     <AppShell>
       <PageHeader title="Задачи" description="Управление профилями парсинга, запуском, остановкой и логами выполнения." />
+      {params.deleteNotice ? <PageNotice tone="warn" title="Удаление отложено" message={params.deleteNotice} /> : null}
       <div className="grid gap-4">
         <Card>
           <SectionHeader title="Профили-задачи" description="Быстрый запуск, остановка и переход к последним логам." />
@@ -126,15 +127,23 @@ export default async function TasksPage({
             />
             <div className="grid gap-2">
               {runs.map((run) => (
-                <a key={run.id} href={pageLink({ runId: run.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="rounded-md border border-[var(--line)] bg-black/20 p-3 hover:bg-[#f6c453]/10">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">{run.searchProfile.name}</span>
-                    <Badge tone={run.status === "FAILED" ? "bad" : run.status === "COMPLETED" ? "good" : "default"}>
-                      {runStatusLabel(run.status, run.failureReason)}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 text-xs text-[var(--muted)]">Попыток: {run.attempts} / {run.createdAt.toLocaleString("ru-RU")}</div>
-                </a>
+                <div key={run.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3 hover:bg-[#f6c453]/10">
+                  <a href={pageLink({ runId: run.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="block">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">{run.searchProfile.name}</span>
+                      <Badge tone={run.status === "FAILED" ? "bad" : run.status === "COMPLETED" ? "good" : "default"}>
+                        {runStatusLabel(run.status, run.failureReason)}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--muted)]">Попыток: {run.attempts} / {run.createdAt.toLocaleString("ru-RU")}</div>
+                  </a>
+                  <form action={deleteRunAction} className="mt-2">
+                    <input type="hidden" name="runId" value={run.id} />
+                    <Button type="submit" className="h-8 bg-red-300 px-2 text-xs hover:bg-red-200">
+                      Удалить
+                    </Button>
+                  </form>
+                </div>
               ))}
               {runs.length === 0 ? <div className="text-sm text-[var(--muted)]">Запусков пока нет.</div> : null}
             </div>
@@ -164,19 +173,27 @@ export default async function TasksPage({
                   <div className="text-sm font-semibold text-[#fff4d6]">{selected.searchProfile.name}</div>
                   <div className="text-xs text-[var(--muted)]">ID запуска: {selected.id}</div>
                 </div>
-                {["QUEUED", "RUNNING"].includes(selected.status) ? (
-                  <form action={stopRunAction}>
+                <div className="flex flex-wrap gap-2">
+                  {["QUEUED", "RUNNING"].includes(selected.status) ? (
+                    <form action={stopRunAction}>
+                      <input type="hidden" name="runId" value={selected.id} />
+                      <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                        Остановить
+                      </Button>
+                    </form>
+                  ) : (
+                    <form action={continueRunAction}>
+                      <input type="hidden" name="runId" value={selected.id} />
+                      <Button type="submit">Продолжить поиск</Button>
+                    </form>
+                  )}
+                  <form action={deleteRunAction}>
                     <input type="hidden" name="runId" value={selected.id} />
                     <Button type="submit" className="bg-red-300 hover:bg-red-200">
-                      Остановить
+                      Удалить
                     </Button>
                   </form>
-                ) : (
-                  <form action={continueRunAction}>
-                    <input type="hidden" name="runId" value={selected.id} />
-                    <Button type="submit">Продолжить поиск</Button>
-                  </form>
-                )}
+                </div>
               </div>
               <LiveRunLogs
                 key={selected.id}

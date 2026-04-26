@@ -1,13 +1,13 @@
 import { AppShell, PageHeader } from "@/components/shell";
 import { Button, Card, Field, Input, PageNotice, SectionHeader } from "@/components/ui";
-import { saveTelegramAction } from "@/lib/actions";
+import { deleteTelegramConfigAction, saveTelegramAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ telegramError?: string; telegramSaved?: string }>;
+  searchParams: Promise<{ telegramError?: string; telegramSaved?: string; telegramDeleted?: string }>;
 }) {
   await requireUser();
   const params = await searchParams;
@@ -21,6 +21,9 @@ export default async function SettingsPage({
       ) : null}
       {params.telegramError ? (
         <PageNotice tone="bad" title="Telegram не прошел проверку" message={params.telegramError} />
+      ) : null}
+      {params.telegramDeleted ? (
+        <PageNotice tone="warn" title="Telegram удален" message="Настройки Telegram очищены." />
       ) : null}
       <div className="grid gap-4">
         <Card>
@@ -37,6 +40,13 @@ export default async function SettingsPage({
             </Field>
             <Button type="submit">Проверить и сохранить Telegram</Button>
           </form>
+          {config ? (
+            <form action={deleteTelegramConfigAction} className="mt-3">
+              <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                Удалить настройки Telegram
+              </Button>
+            </form>
+          ) : null}
         </Card>
         <Card>
           <SectionHeader title="Что указывать" />

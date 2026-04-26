@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 import { createSession, destroySession, hashPassword, requireUser, verifyPassword } from "@/lib/auth";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
@@ -154,6 +155,108 @@ export async function createAccountAction(formData: FormData) {
   });
   revalidatePath("/accounts");
   redirect("/accounts");
+}
+
+export async function updateAccountAction(formData: FormData) {
+  await requireUser();
+  const accountDbId = requiredString(formData, "accountDbId");
+  const provider = requiredString(formData, "provider");
+  const secret = String(formData.get("password") ?? "").trim();
+  const tokenOnlyProvider = provider === "timeweb" || provider === "regru";
+  const account = await prisma.providerAccount.findUnique({ where: { id: accountDbId } });
+  if (!account) throw new Error("Account not found");
+
+  await prisma.providerAccount.update({
+    where: { id: accountDbId },
+    data: {
+      name: requiredString(formData, "name"),
+      provider,
+      accountId: tokenOnlyProvider ? provider : requiredString(formData, "accountId"),
+      username: tokenOnlyProvider ? "api-token" : requiredString(formData, "username"),
+      encryptedPassword: secret ? encryptSecret(secret) : account.encryptedPassword,
+      encryptedIamToken: provider === account.provider ? account.encryptedIamToken : null,
+      iamTokenExpiresAt: provider === account.provider ? account.iamTokenExpiresAt : null,
+    },
+  });
+  revalidatePath("/accounts");
+  revalidatePath("/profiles");
+  revalidatePath("/tasks");
+  redirect("/accounts");
+}
+
+async function releaseFindings(where: Prisma.FindingWhereInput) {
+  const findings = await prisma.finding.findMany({
+    where,
+    include: {
+      searchProfile: {
+        include: {
+          providerAccount: true,
+          projectBinding: true,
+        },
+      },
+    },
+  });
+
+  for (const finding of findings) {
+    try {
+      await releaseProviderFloatingIp({
+        account: finding.searchProfile.providerAccount,
+        projectId: finding.searchProfile.projectBinding.externalProjectId,
+        projectName: finding.searchProfile.projectBinding.name,
+        floatingIpId: finding.floatingIpId,
+      });
+    } catch {
+      // Панель все равно удаляет запись. Провайдер мог уже удалить IP вручную.
+    }
+  }
+}
+
+export async function deleteAccountAction(formData: FormData) {
+  await requireUser();
+  const accountDbId = requiredString(formData, "accountDbId");
+  const activeRuns = await prisma.run.count({
+    where: {
+      searchProfile: { providerAccountId: accountDbId },
+      status: { in: ["QUEUED", "RUNNING"] },
+    },
+  });
+  if (activeRuns > 0) {
+    await prisma.run.updateMany({
+      where: {
+        searchProfile: { providerAccountId: accountDbId },
+        status: { in: ["QUEUED", "RUNNING"] },
+      },
+      data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+    });
+    redirect(
+      `/accounts?noticeTone=warn&noticeTitle=${encodeURIComponent("Удаление отложено")}&noticeMessage=${encodeURIComponent("У аккаунта были активные задачи. Я остановил их безопасно. Нажмите удалить еще раз после остановки текущего шага.")}`,
+    );
+  }
+  await releaseFindings({ searchProfile: { providerAccountId: accountDbId } });
+  await prisma.providerAccount.delete({ where: { id: accountDbId } });
+  revalidatePath("/accounts");
+  revalidatePath("/profiles");
+  revalidatePath("/tasks");
+  revalidatePath("/findings");
+  redirect("/accounts");
+}
+
+async function stopActiveProfileRuns(profileId: string) {
+  const activeRuns = await prisma.run.count({
+    where: {
+      searchProfileId: profileId,
+      status: { in: ["QUEUED", "RUNNING"] },
+    },
+  });
+  if (activeRuns === 0) return false;
+  await prisma.run.updateMany({
+    where: {
+      searchProfileId: profileId,
+      status: { in: ["QUEUED", "RUNNING"] },
+    },
+    data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+  });
+  return true;
 }
 
 export async function syncProjectsAction(formData: FormData) {
@@ -397,6 +500,20 @@ export async function duplicateProfileAction(formData: FormData) {
   redirect("/profiles");
 }
 
+export async function deleteProfileAction(formData: FormData) {
+  await requireUser();
+  const profileId = requiredString(formData, "profileId");
+  if (await stopActiveProfileRuns(profileId)) {
+    redirect(`/profiles?cleanupError=${encodeURIComponent("У профиля были активные задачи. Я остановил их безопасно. Нажмите удалить еще раз после остановки текущего шага.")}`);
+  }
+  await releaseFindings({ searchProfileId: profileId });
+  await prisma.searchProfile.delete({ where: { id: profileId } });
+  revalidatePath("/profiles");
+  revalidatePath("/tasks");
+  revalidatePath("/findings");
+  redirect("/profiles");
+}
+
 export async function cleanupSelectelProfileIpsAction(formData: FormData) {
   await requireUser();
   const profileId = requiredString(formData, "profileId");
@@ -574,6 +691,26 @@ export async function deleteFindingAction(formData: FormData) {
   redirect("/findings");
 }
 
+export async function deleteRunAction(formData: FormData) {
+  await requireUser();
+  const runId = requiredString(formData, "runId");
+  const run = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
+  if (!run) redirect("/tasks");
+  if (["QUEUED", "RUNNING"].includes(run.status)) {
+    await prisma.run.update({
+      where: { id: runId },
+      data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+    });
+    redirect(`/tasks?deleteNotice=${encodeURIComponent("Запуск был активен. Я остановил его безопасно. Удалите его повторно после остановки текущего шага.")}`);
+  }
+  await releaseFindings({ runId });
+  await prisma.run.delete({ where: { id: runId } });
+  revalidatePath("/runs");
+  revalidatePath("/tasks");
+  revalidatePath("/findings");
+  redirect("/tasks");
+}
+
 export async function stopRunAction(formData: FormData) {
   await requireUser();
   const runId = requiredString(formData, "runId");
@@ -597,6 +734,13 @@ export async function stopProfileRunsAction(formData: FormData) {
   });
   revalidatePath("/runs");
   revalidatePath("/tasks");
+}
+
+export async function deleteTelegramConfigAction() {
+  await requireUser();
+  await prisma.telegramConfig.deleteMany();
+  revalidatePath("/settings");
+  redirect("/settings?telegramDeleted=1");
 }
 
 export async function saveTelegramAction(formData: FormData) {
