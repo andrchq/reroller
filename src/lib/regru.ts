@@ -210,9 +210,16 @@ async function listRegRuImages(account: ProviderAccount, region: string) {
   return payload.images ?? [];
 }
 
-function selectSmallestPlan(plans: RegRuPlan[]) {
-  const available = plans.filter((plan) => plan.slug);
+function selectPlanCandidates(plans: RegRuPlan[]) {
+  const available = plans.filter((plan) => {
+    const slug = plan.slug?.toLowerCase() ?? "";
+    if (!slug) return false;
+    return !slug.includes("free");
+  });
   available.sort((a, b) => {
+    const priorityA = planPriority(a.slug ?? "");
+    const priorityB = planPriority(b.slug ?? "");
+    if (priorityA !== priorityB) return priorityA - priorityB;
     const byPrice = numericPrice(a.price_per_hour ?? a.price) - numericPrice(b.price_per_hour ?? b.price);
     if (byPrice !== 0) return byPrice;
     const byCpu = (a.vcpus ?? 999) - (b.vcpus ?? 999);
@@ -221,7 +228,16 @@ function selectSmallestPlan(plans: RegRuPlan[]) {
     if (byRam !== 0) return byRam;
     return (a.disk ?? 999999) - (b.disk ?? 999999);
   });
-  return available.find((plan) => plan.slug?.includes("hp-c1-m1-d10")) ?? available[0] ?? null;
+  return available;
+}
+
+function planPriority(slug: string) {
+  const normalized = slug.toLowerCase();
+  if (normalized === "c1-m1-d10-hp") return 0;
+  if (normalized.includes("c1-m1-d10") && normalized.includes("hp")) return 1;
+  if (normalized.includes("hp")) return 2;
+  if (normalized.includes("c1-m1-d10")) return 3;
+  return 4;
 }
 
 function selectUbuntuImage(images: RegRuImage[], region: string) {
@@ -281,6 +297,12 @@ function isImageNotFoundError(error: unknown) {
   if (!(error instanceof RegRuApiError)) return false;
   const normalized = `${error.code ?? ""} ${error.message} ${error.raw}`.toLowerCase();
   return normalized.includes("image_not_found") || normalized.includes("image not found");
+}
+
+function isWrongSizeSlugError(error: unknown) {
+  if (!(error instanceof RegRuApiError)) return false;
+  const normalized = `${error.code ?? ""} ${error.message} ${error.raw}`.toLowerCase();
+  return normalized.includes("wrong_size_slug") || normalized.includes("incorrect server size");
 }
 
 async function createRegRuServer(input: {
@@ -397,25 +419,42 @@ export async function allocateRegRuFloatingIp(input: {
   shouldContinue?: () => Promise<boolean>;
 }) {
   const plans = await listRegRuPlans(input.account, input.region);
-  const plan = selectSmallestPlan(plans);
-  if (!plan?.slug) throw new Error(`Reg.ru: в регионе ${input.region} не найден доступный почасовой тариф для временного сервера.`);
+  const planCandidates = selectPlanCandidates(plans);
+  if (planCandidates.length === 0) throw new Error(`Reg.ru: в регионе ${input.region} не найден доступный почасовой тариф для временного сервера.`);
 
   const images = await listRegRuImages(input.account, input.region);
   const image = selectUbuntuImage(images, input.region);
   if (!image?.slug && !image?.id) throw new Error(`Reg.ru: в регионе ${input.region} не найден образ Ubuntu для временного сервера.`);
 
   const name = randomServerName();
-  await input.onLog?.(
-    `Reg.ru: создаю временный сервер "${name}" в ${input.region}. Тариф: ${plan.slug}. Образ: ${image.slug ?? image.id}.`,
-  );
-  const created = await createRegRuServerWithFallbacks({
-    account: input.account,
-    name,
-    region: input.region,
-    planSlug: plan.slug,
-    image,
-    onLog: input.onLog,
-  });
+  let created: RegRuReglet | null = null;
+  let lastCreateError: unknown = null;
+
+  for (const [index, plan] of planCandidates.entries()) {
+    if (!plan.slug) continue;
+    await input.onLog?.(
+      `Reg.ru: создаю временный сервер "${name}" в ${input.region}. Тариф: ${plan.slug}. Образ: ${image.slug ?? image.id}.`,
+    );
+    try {
+      created = await createRegRuServerWithFallbacks({
+        account: input.account,
+        name,
+        region: input.region,
+        planSlug: plan.slug,
+        image,
+        onLog: input.onLog,
+      });
+      break;
+    } catch (error) {
+      lastCreateError = error;
+      if (!isWrongSizeSlugError(error) || index === planCandidates.length - 1) throw error;
+      await input.onLog?.(`Reg.ru: тариф ${plan.slug} не принят API v1, пробую следующий доступный тариф.`);
+    }
+  }
+
+  if (!created) {
+    throw lastCreateError instanceof Error ? lastCreateError : new Error("Reg.ru: сервер не создан, подходящий тариф не найден.");
+  }
 
   const initialIp = normalizeRegRuRegletIp(created);
   if (initialIp?.floating_ip_address) return initialIp;
