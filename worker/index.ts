@@ -16,6 +16,7 @@ type FailureReason =
   | "QUOTA"
   | "DAILY_LIMIT"
   | "RATE_LIMIT"
+  | "IMAGE"
   | "TIMEOUT"
   | "PROVIDER"
   | "PAYLOAD"
@@ -151,6 +152,7 @@ function classifyFailureReason(error: unknown): FailureReason {
     if (error.status === 401 || error.status === 403 || message.includes("token")) return "AUTH";
     if (message.includes("баланс") || message.includes("balance")) return "BALANCE";
     if (message.includes("лимит") || message.includes("limit") || message.includes("quota")) return "QUOTA";
+    if (message.includes("образ") || message.includes("image")) return "IMAGE";
     if (error.status === 429) return "RATE_LIMIT";
     return "PROVIDER";
   }
@@ -160,6 +162,7 @@ function classifyFailureReason(error: unknown): FailureReason {
   if (message.includes("balance") || message.includes("баланс")) return "BALANCE";
   if (message.includes("401") || message.includes("403") || message.includes("auth") || message.includes("token")) return "AUTH";
   if (message.includes("429") || message.includes("rate")) return "RATE_LIMIT";
+  if (message.includes("image_not_found") || message.includes("image not found") || message.includes("образ")) return "IMAGE";
   if (message.includes("unexpected payload")) return "PAYLOAD";
   if (message.includes("timed out") || message.includes("timeout")) return "TIMEOUT";
   if (message.includes("stalled") || message.includes("lock")) return "WORKER";

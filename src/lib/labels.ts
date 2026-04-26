@@ -6,6 +6,7 @@ export type RunFailureReason =
   | "QUOTA"
   | "DAILY_LIMIT"
   | "RATE_LIMIT"
+  | "IMAGE"
   | "TIMEOUT"
   | "PROVIDER"
   | "PAYLOAD"
@@ -18,6 +19,7 @@ const failureReasonLabels: Record<RunFailureReason, string> = {
   QUOTA: "Квота",
   DAILY_LIMIT: "Дневной лимит",
   RATE_LIMIT: "Рейтлимит",
+  IMAGE: "Образ",
   TIMEOUT: "Таймаут",
   PROVIDER: "Провайдер",
   PAYLOAD: "Ответ API",

@@ -27,12 +27,15 @@ type RegRuPlan = {
   name?: string;
   price?: string | number;
   price_month?: string | number;
+  price_per_hour?: string | number;
+  price_per_month?: string | number;
   disk?: number;
   memory?: number;
   vcpus?: number;
 };
 
 type RegRuImage = {
+  id?: number;
   slug?: string;
   name?: string;
   distribution?: string;
@@ -75,12 +78,15 @@ export class RegRuApiError extends Error {
     const isAuth = details.status === 401 || details.status === 403;
     const isBalance = normalized.includes("balance") || normalized.includes("money") || normalized.includes("payment") || normalized.includes("fund");
     const isLimit = normalized.includes("limit") || normalized.includes("quota") || normalized.includes("too many");
+    const isImageNotFound = normalized.includes("image_not_found") || normalized.includes("image not found");
     const message = isAuth
       ? "Reg.ru: API token не принят. Проверьте токен CloudVPS API в панели Рег.облака и запустите профиль снова."
       : isBalance
         ? "Reg.ru: недостаточно баланса для создания временного сервера. Пополните баланс и запустите профиль снова."
         : isLimit
           ? "Reg.ru: достигнут лимит серверов или сетевых ресурсов на аккаунте. Освободите ресурсы или увеличьте лимит."
+          : isImageNotFound
+            ? "Reg.ru: выбранный образ ОС не найден в зоне создания сервера. Синхронизируйте аккаунт и запустите профиль снова."
           : `Reg.ru ${operation} failed: ${formatRegRuError(details)}`;
 
     super(message);
@@ -88,7 +94,7 @@ export class RegRuApiError extends Error {
     this.status = details.status;
     this.code = details.code;
     this.raw = details.raw;
-    this.fatal = isAuth || isBalance || isLimit;
+    this.fatal = isAuth || isBalance || isLimit || isImageNotFound;
   }
 }
 
@@ -197,7 +203,7 @@ async function listRegRuImages(account: ProviderAccount, region: string) {
 function selectSmallestPlan(plans: RegRuPlan[]) {
   const available = plans.filter((plan) => plan.slug);
   available.sort((a, b) => {
-    const byPrice = numericPrice(a.price) - numericPrice(b.price);
+    const byPrice = numericPrice(a.price_per_hour ?? a.price) - numericPrice(b.price_per_hour ?? b.price);
     if (byPrice !== 0) return byPrice;
     const byCpu = (a.vcpus ?? 999) - (b.vcpus ?? 999);
     if (byCpu !== 0) return byCpu;
@@ -208,8 +214,8 @@ function selectSmallestPlan(plans: RegRuPlan[]) {
   return available.find((plan) => plan.slug?.includes("hp-c1-m1-d10")) ?? available[0] ?? null;
 }
 
-function selectUbuntuImage(images: RegRuImage[]) {
-  const available = images.filter((image) => image.slug);
+function selectUbuntuImage(images: RegRuImage[], region: string) {
+  const available = images.filter((image) => (image.slug || image.id) && (!image.region_slug || image.region_slug === region));
   return (
     available.find((image) => image.slug?.includes("ubuntu-24-04") || image.name?.toLowerCase().includes("ubuntu 24.04")) ??
     available.find((image) => image.slug?.includes("ubuntu-22-04") || image.name?.toLowerCase().includes("ubuntu 22.04")) ??
@@ -231,6 +237,38 @@ async function deleteRegRuServer(account: ProviderAccount, serverId: string) {
   if (!response.ok && response.status !== 404) throw await createRegRuApiError("server delete", response);
 }
 
+function isImageNotFoundError(error: unknown) {
+  if (!(error instanceof RegRuApiError)) return false;
+  const normalized = `${error.code ?? ""} ${error.message} ${error.raw}`.toLowerCase();
+  return normalized.includes("image_not_found") || normalized.includes("image not found");
+}
+
+async function createRegRuServer(input: {
+  account: ProviderAccount;
+  name: string;
+  region: string;
+  planSlug: string;
+  image: string | number;
+}) {
+  const response = await regRuFetch(input.account, "/v1/reglets", {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name,
+      size: input.planSlug,
+      image: input.image,
+      region: input.region,
+      region_slug: input.region,
+      backups: false,
+    }),
+  });
+
+  if (!response.ok) throw await createRegRuApiError("server create", response);
+  const payload = (await response.json()) as { reglet?: RegRuReglet };
+  const created = payload.reglet;
+  if (!created?.id) throw new Error(`Reg.ru server create returned an unexpected payload: ${JSON.stringify(payload).slice(0, 700)}`);
+  return created;
+}
+
 export async function allocateRegRuFloatingIp(input: {
   account: ProviderAccount;
   regletId: string;
@@ -244,23 +282,33 @@ export async function allocateRegRuFloatingIp(input: {
   if (!plan?.slug) throw new Error(`Reg.ru: в регионе ${input.region} не найден доступный почасовой тариф для временного сервера.`);
 
   const images = await listRegRuImages(input.account, input.region);
-  const image = selectUbuntuImage(images);
-  if (!image?.slug) throw new Error(`Reg.ru: в регионе ${input.region} не найден образ Ubuntu для временного сервера.`);
+  const image = selectUbuntuImage(images, input.region);
+  if (!image?.slug && !image?.id) throw new Error(`Reg.ru: в регионе ${input.region} не найден образ Ubuntu для временного сервера.`);
 
-  const response = await regRuFetch(input.account, "/v1/reglets", {
-    method: "POST",
-    body: JSON.stringify({
-      name: `reroller-${Date.now()}`,
-      size: plan.slug,
-      image: image.slug,
-      backups: false,
-    }),
-  });
-
-  if (!response.ok) throw await createRegRuApiError("server create", response);
-  const payload = (await response.json()) as { reglet?: RegRuReglet };
-  const created = payload.reglet;
-  if (!created?.id) throw new Error(`Reg.ru server create returned an unexpected payload: ${JSON.stringify(payload).slice(0, 700)}`);
+  const name = `reroller-${Date.now()}`;
+  await input.onLog?.(
+    `Reg.ru: создаю временный сервер в ${input.region}. Тариф: ${plan.slug}. Образ: ${image.slug ?? image.id}.`,
+  );
+  let created: RegRuReglet;
+  try {
+    created = await createRegRuServer({
+      account: input.account,
+      name,
+      region: input.region,
+      planSlug: plan.slug,
+      image: image.slug ?? image.id!,
+    });
+  } catch (error) {
+    if (!isImageNotFoundError(error) || !image.id || image.slug === undefined) throw error;
+    await input.onLog?.(`Reg.ru: образ ${image.slug} не принят API v1, повторяю создание по ID образа ${image.id}.`);
+    created = await createRegRuServer({
+      account: input.account,
+      name,
+      region: input.region,
+      planSlug: plan.slug,
+      image: image.id,
+    });
+  }
 
   const initialIp = normalizeRegRuRegletIp(created);
   if (initialIp?.floating_ip_address) return initialIp;
