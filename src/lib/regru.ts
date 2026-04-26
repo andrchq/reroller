@@ -3,6 +3,8 @@ import { decryptSecret } from "@/lib/crypto";
 import { wait } from "@/lib/utils";
 
 const apiUrl = "https://api.cloudvps.reg.ru";
+const serverNamePrefixes = ["web", "app", "api", "db", "dev", "test", "stage", "prod", "backup", "monitor"];
+const serverNameRoles = ["node", "server", "host", "vm", "main", "worker", "service"];
 
 type RegRuErrorDetails = {
   status: number;
@@ -151,6 +153,13 @@ async function regRuFetch(account: ProviderAccount, path: string, init: RequestI
 function numericPrice(value: unknown) {
   const parsed = Number(String(value ?? "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+
+function randomServerName() {
+  const prefix = serverNamePrefixes[Math.floor(Math.random() * serverNamePrefixes.length)];
+  const role = serverNameRoles[Math.floor(Math.random() * serverNameRoles.length)];
+  const suffix = String(Math.floor(Math.random() * 90) + 10);
+  return `${prefix}-${role}-${suffix}`;
 }
 
 export function normalizeRegRuServer(reglet: RegRuReglet): RegRuServerProject | null {
@@ -367,6 +376,7 @@ export async function allocateRegRuFloatingIp(input: {
   waitIntervalSeconds: number;
   waitMaxSeconds: number;
   onLog?: (message: string) => Promise<void>;
+  shouldContinue?: () => Promise<boolean>;
 }) {
   const plans = await listRegRuPlans(input.account, input.region);
   const plan = selectSmallestPlan(plans);
@@ -376,9 +386,9 @@ export async function allocateRegRuFloatingIp(input: {
   const image = selectUbuntuImage(images, input.region);
   if (!image?.slug && !image?.id) throw new Error(`Reg.ru: в регионе ${input.region} не найден образ Ubuntu для временного сервера.`);
 
-  const name = `reroller-${Date.now()}`;
+  const name = randomServerName();
   await input.onLog?.(
-    `Reg.ru: создаю временный сервер в ${input.region}. Тариф: ${plan.slug}. Образ: ${image.slug ?? image.id}.`,
+    `Reg.ru: создаю временный сервер "${name}" в ${input.region}. Тариф: ${plan.slug}. Образ: ${image.slug ?? image.id}.`,
   );
   const created = await createRegRuServerWithFallbacks({
     account: input.account,
@@ -393,20 +403,19 @@ export async function allocateRegRuFloatingIp(input: {
   if (initialIp?.floating_ip_address) return initialIp;
 
   const waitIntervalSeconds = Math.max(5, input.waitIntervalSeconds);
-  const waitMaxSeconds = Math.max(60, input.waitMaxSeconds);
-  const deadline = Date.now() + waitMaxSeconds * 1000;
-  await input.onLog?.(`Reg.ru: сервер ${created.id} создан, ожидаю выдачу IP до ${waitMaxSeconds} сек. Проверка каждые ${waitIntervalSeconds} сек.`);
+  await input.onLog?.(`Reg.ru: сервер ${created.id} создан, ожидаю выдачу IP без ограничения по времени. Проверка каждые ${waitIntervalSeconds} сек.`);
 
-  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
-    await wait(Math.min(waitIntervalSeconds * 1000, Math.max(0, deadline - Date.now())));
+  for (let attempt = 1; ; attempt += 1) {
+    await wait(waitIntervalSeconds * 1000);
+    if (input.shouldContinue && !(await input.shouldContinue())) {
+      await deleteRegRuServer(input.account, String(created.id));
+      throw new Error(`Reg.ru: ожидание IP для сервера ${created.id} остановлено оператором. Сервер удален автоматически.`);
+    }
     await input.onLog?.(`Reg.ru: проверка готовности сервера ${created.id}, попытка ${attempt}`);
     const current = await getRegRuServer(input.account, String(created.id));
     const floatingIp = current ? normalizeRegRuRegletIp(current) : null;
     if (floatingIp?.floating_ip_address) return floatingIp;
   }
-
-  await deleteRegRuServer(input.account, String(created.id));
-  throw new Error(`Reg.ru: временный сервер создан, но IP не появился за ${waitMaxSeconds} сек. Сервер удален автоматически.`);
 }
 
 export async function releaseRegRuFloatingIp(input: {

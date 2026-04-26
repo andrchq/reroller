@@ -131,13 +131,12 @@ export function ProfileForm({
         {isRegRu ? (
           <div className="grid gap-3 rounded-md border border-[#f6c453]/20 bg-[#f6c453]/5 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-[#f6c453]">Ожидание сервера Reg.ru</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3">
               <Field label="Проверка IP, сек">
                 <Input name="serverWaitIntervalSeconds" type="number" defaultValue={profile?.serverWaitIntervalSeconds ?? 10} min={5} />
               </Field>
-              <Field label="Макс. ожидание IP, сек">
-                <Input name="serverWaitMaxSeconds" type="number" defaultValue={profile?.serverWaitMaxSeconds ?? 240} min={60} />
-              </Field>
+              <input type="hidden" name="serverWaitMaxSeconds" value={profile?.serverWaitMaxSeconds ?? 240} />
+              <div className="text-xs leading-5 text-[#cbbf95]">IP ожидается без ограничения по времени. Остановить ожидание можно кнопкой остановки задачи.</div>
             </div>
           </div>
         ) : (

@@ -297,6 +297,10 @@ async function processRun(runId: string) {
                 onLog: async (message) => {
                   await appendRunLog(runId, "INFO", message);
                 },
+                shouldContinue: async () => {
+                  const currentRun = await prisma.run.findUnique({ where: { id: runId }, select: { status: true } });
+                  return currentRun?.status !== "STOPPED";
+                },
               })
             : await allocateFloatingIp({
                 account: profile.providerAccount,
