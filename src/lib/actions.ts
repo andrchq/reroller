@@ -8,7 +8,17 @@ import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { enqueueRun } from "@/lib/queue";
 import { listRegRuCreateRegions, validateRegRuAccount } from "@/lib/regru";
-import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listFloatingIps, listSelectelProjects, releaseFloatingIp } from "@/lib/selectel";
+import {
+  cleanupSelectelOpenStackNetworkResources,
+  defaultSelectelRegions,
+  deleteSubnet,
+  extractProjectRegions,
+  getSelectelProjectDetails,
+  listFloatingIps,
+  listSelectelProjects,
+  listSubnets,
+  releaseFloatingIp,
+} from "@/lib/selectel";
 import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
 import { listTimewebProjects, listTimewebZones } from "@/lib/timeweb";
 import { targetMatchesIp } from "@/lib/ip-matcher";
@@ -414,6 +424,12 @@ export async function cleanupSelectelProfileIpsAction(formData: FormData) {
   let deleted = 0;
   let protectedCount = 0;
   let failed = 0;
+  let subnetsDeleted = 0;
+  let subnetsSkipped = 0;
+  let routerPortsDeleted = 0;
+  let routersDeleted = 0;
+  let networksDeleted = 0;
+  let networkSkipped = 0;
 
   for (const floatingIp of floatingIps) {
     const isProtected = targets.some((target) => targetMatchesIp(target, floatingIp.floating_ip_address));
@@ -435,10 +451,58 @@ export async function cleanupSelectelProfileIpsAction(formData: FormData) {
     }
   }
 
+  const remainingProtectedIps = floatingIps.filter((floatingIp) =>
+    targets.some((target) => targetMatchesIp(target, floatingIp.floating_ip_address)),
+  );
+  if (remainingProtectedIps.length === 0) {
+    try {
+      const subnets = await listSubnets({
+        account: profile.providerAccount,
+        projectId: profile.projectBinding.externalProjectId,
+        projectName: profile.projectBinding.name,
+      });
+      const cleanupSubnets = subnets.filter((subnet) => subnet.servers.length === 0);
+      const networkIds = [...new Set(cleanupSubnets.map((subnet) => subnet.network_id).filter(Boolean))];
+
+      const openStackCleanup = await cleanupSelectelOpenStackNetworkResources({
+        account: profile.providerAccount,
+        projectId: profile.projectBinding.externalProjectId,
+        projectName: profile.projectBinding.name,
+        networkIds,
+      }).catch(() => null);
+
+      routerPortsDeleted = openStackCleanup?.routerPortsDeleted ?? 0;
+      routersDeleted = openStackCleanup?.routersDeleted ?? 0;
+      networksDeleted = openStackCleanup?.networksDeleted ?? 0;
+      networkSkipped = openStackCleanup?.skipped ?? 0;
+
+      for (const subnet of cleanupSubnets) {
+        try {
+          await deleteSubnet({
+            account: profile.providerAccount,
+            projectName: profile.projectBinding.name,
+            subnetId: subnet.subnet_id,
+          });
+          subnetsDeleted += 1;
+        } catch {
+          subnetsSkipped += 1;
+        }
+      }
+
+      subnetsSkipped += subnets.length - cleanupSubnets.length;
+    } catch {
+      networkSkipped += 1;
+    }
+  } else {
+    networkSkipped += 1;
+  }
+
   revalidatePath("/profiles");
   revalidatePath("/findings");
   revalidatePath("/tasks");
-  const message = encodeURIComponent(`Удалено: ${deleted}. Защищено целями профиля: ${protectedCount}. Ошибок: ${failed}.`);
+  const message = encodeURIComponent(
+    `IP удалено: ${deleted}. IP защищено: ${protectedCount}. Ошибок IP: ${failed}. Подсетей удалено: ${subnetsDeleted}. Портов роутера удалено: ${routerPortsDeleted}. Роутеров удалено: ${routersDeleted}. Сетей удалено: ${networksDeleted}. Пропущено сетевых ресурсов: ${subnetsSkipped + networkSkipped}.`,
+  );
   redirect(`/profiles?cleanup=${message}`);
 }
 

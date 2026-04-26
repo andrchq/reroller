@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeFloatingIpListPayload, normalizeFloatingIpPayload } from "@/lib/selectel";
+import { normalizeFloatingIpListPayload, normalizeFloatingIpPayload, normalizeSubnetListPayload } from "@/lib/selectel";
 
 test("normalizes documented Selectel floating IP payload", () => {
   const result = normalizeFloatingIpPayload({
@@ -54,4 +54,25 @@ test("normalizes Selectel floating IP list payload", () => {
   assert.equal(result.length, 2);
   assert.equal(result[0].floating_ip_address, "203.0.113.10");
   assert.equal(result[1].floating_ip_address, "198.51.100.7");
+});
+
+test("normalizes Selectel subnet list payload", () => {
+  const result = normalizeSubnetListPayload({
+    subnets: [
+      {
+        id: "row-1",
+        subnet_id: "subnet-1",
+        network_id: "network-1",
+        project_id: "project-1",
+        region: "ru-1",
+        cidr: "192.168.0.0/24",
+        servers: [],
+      },
+    ],
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].subnet_id, "subnet-1");
+  assert.equal(result[0].network_id, "network-1");
+  assert.equal(result[0].servers.length, 0);
 });

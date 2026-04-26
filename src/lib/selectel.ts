@@ -43,6 +43,7 @@ type TokenScope =
   | { type: "project"; projectName: string };
 
 const projectTokenCache = new Map<string, { token: string; expiresAt: number }>();
+const projectAuthCache = new Map<string, { token: string; networkUrls: string[]; expiresAt: number }>();
 
 export const defaultSelectelRegions = ["ru-2", "ru-6", "ru-7", "gis-1", "ru-1", "ru-3", "ru-9", "gis-2"];
 
@@ -53,6 +54,42 @@ export type SelectelFloatingIp = {
   project_id: string;
   region: string;
   status: string;
+};
+
+export type SelectelSubnet = {
+  id: string;
+  subnet_id: string;
+  network_id: string;
+  project_id: string;
+  region: string;
+  cidr: string;
+  name: string;
+  status: string;
+  servers: Array<{ id?: string; name?: string; status?: string }>;
+};
+
+type OpenStackRouter = {
+  id: string;
+  name?: string;
+  project_id?: string;
+  tenant_id?: string;
+};
+
+type OpenStackPort = {
+  id: string;
+  device_id?: string;
+  device_owner?: string;
+  network_id?: string;
+  project_id?: string;
+  tenant_id?: string;
+};
+
+type OpenStackNetwork = {
+  id: string;
+  name?: string;
+  project_id?: string;
+  tenant_id?: string;
+  "router:external"?: boolean;
 };
 
 export class SelectelApiError extends Error {
@@ -127,6 +164,37 @@ export function normalizeFloatingIpListPayload(payload: unknown): SelectelFloati
         : [];
 
   return rawItems.map((item) => normalizeFloatingIpPayload(item)).filter((item): item is SelectelFloatingIp => Boolean(item));
+}
+
+export function normalizeSubnetListPayload(payload: unknown): SelectelSubnet[] {
+  const root = asRecord(payload);
+  if (!root) return [];
+  const rawItems = Array.isArray(root.subnets) ? root.subnets : [];
+
+  return rawItems.flatMap((item) => {
+    const record = asRecord(item);
+    if (!record) return [];
+
+    const id = String(record.id ?? record.subnet_id ?? "");
+    const subnetId = pickString(record, ["subnet_id"]) || id;
+    const networkId = pickString(record, ["network_id"]);
+    const projectId = pickString(record, ["project_id", "project"]);
+    if (!id || !subnetId || !networkId) return [];
+
+    return [
+      {
+        id,
+        subnet_id: subnetId,
+        network_id: networkId,
+        project_id: projectId,
+        region: pickString(record, ["region"]),
+        cidr: pickString(record, ["cidr"]),
+        name: pickString(record, ["name"]),
+        status: pickString(record, ["status"]) || "UNKNOWN",
+        servers: Array.isArray(record.servers) ? (record.servers as SelectelSubnet["servers"]) : [],
+      },
+    ];
+  });
 }
 
 function shortPayload(payload: unknown) {
@@ -258,6 +326,52 @@ export async function getSelectelProjectToken(account: ProviderAccount, projectN
   });
 
   return token;
+}
+
+async function getSelectelProjectAuth(account: ProviderAccount, projectName: string, forceRefresh = false) {
+  const cacheKey = `${account.id}:${projectName}:auth`;
+  const cached = projectAuthCache.get(cacheKey);
+  if (!forceRefresh && cached && cached.expiresAt > Date.now() + 60_000) return cached;
+
+  const password = decryptSecret(account.encryptedPassword);
+  const response = await fetchWithTimeout(identityUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tokenScopeBody(account, password, { type: "project", projectName })),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Selectel project auth failed for "${projectName}": ${await readError(response)}`);
+  }
+
+  const token = response.headers.get("x-subject-token");
+  if (!token) {
+    throw new Error(`Selectel project auth for "${projectName}" did not return X-Subject-Token`);
+  }
+
+  const payload = (await response.json()) as {
+    token?: {
+      catalog?: Array<{
+        type?: string;
+        name?: string;
+        endpoints?: Array<{ interface?: string; url?: string }>;
+      }>;
+    };
+  };
+  const networkUrls = [
+    ...new Set(
+      (payload.token?.catalog ?? [])
+        .filter((service) => service.type === "network" || service.name?.toLowerCase() === "neutron")
+        .flatMap((service) => service.endpoints ?? [])
+        .filter((endpoint) => !endpoint.interface || endpoint.interface === "public")
+        .map((endpoint) => endpoint.url?.replace(/\/$/, ""))
+        .filter((url): url is string => Boolean(url)),
+    ),
+  ];
+  const auth = { token, networkUrls, expiresAt: Date.now() + 1000 * 60 * 60 * 23 };
+  projectAuthCache.set(cacheKey, auth);
+  projectTokenCache.set(`${account.id}:${projectName}`, { token, expiresAt: auth.expiresAt });
+  return auth;
 }
 
 async function selectelFetch(
@@ -407,6 +521,41 @@ export async function listFloatingIps(input: {
   return normalizeFloatingIpListPayload(await response.json());
 }
 
+export async function listSubnets(input: {
+  account: ProviderAccount;
+  projectId: string;
+  projectName: string;
+}) {
+  const response = await selectelFetch(
+    input.account,
+    "/subnets?detailed=true",
+    { method: "GET" },
+    { scope: { type: "project", projectName: input.projectName } },
+  );
+
+  if (!response.ok) {
+    throw await buildSelectelError(response, "Selectel subnet list failed");
+  }
+
+  return normalizeSubnetListPayload(await response.json()).filter((subnet) => !subnet.project_id || subnet.project_id === input.projectId);
+}
+
+export async function deleteSubnet(input: {
+  account: ProviderAccount;
+  projectName: string;
+  subnetId: string;
+}) {
+  const response = await selectelFetch(
+    input.account,
+    `/subnets/${input.subnetId}`,
+    { method: "DELETE" },
+    { scope: { type: "project", projectName: input.projectName } },
+  );
+  if (!response.ok && response.status !== 404) {
+    throw await buildSelectelError(response, "Selectel subnet delete failed");
+  }
+}
+
 export async function releaseFloatingIp(input: {
   account: ProviderAccount;
   projectName: string;
@@ -421,4 +570,119 @@ export async function releaseFloatingIp(input: {
   if (!response.ok && response.status !== 404) {
     throw new Error(`Selectel floating IP delete failed: ${await readError(response)}`);
   }
+}
+
+async function openStackFetch(input: {
+  account: ProviderAccount;
+  projectName: string;
+  url: string;
+  init?: RequestInit;
+}) {
+  const auth = await getSelectelProjectAuth(input.account, input.projectName);
+  if (auth.networkUrls.length === 0) {
+    throw new Error("Selectel project auth did not return OpenStack network endpoint");
+  }
+
+  const response = await fetchWithTimeout(input.url, {
+    ...(input.init ?? {}),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Token": auth.token,
+      ...(input.init?.headers ?? {}),
+    },
+  });
+  return response;
+}
+
+async function openStackJson<T>(input: {
+  account: ProviderAccount;
+  projectName: string;
+  baseUrl: string;
+  path: string;
+}) {
+  const response = await openStackFetch({
+    account: input.account,
+    projectName: input.projectName,
+    url: neutronUrl(input.baseUrl, input.path),
+  });
+  if (!response.ok) throw new Error(`OpenStack network request failed: ${await readError(response)}`);
+  return (await response.json()) as T;
+}
+
+function neutronUrl(baseUrl: string, path: string) {
+  const normalizedBase = baseUrl.replace(/\/$/, "");
+  const normalizedPath = path.replace(/^\//, "");
+  return normalizedBase.endsWith("/v2.0")
+    ? `${normalizedBase}/${normalizedPath.replace(/^v2\.0\//, "")}`
+    : `${normalizedBase}/${normalizedPath}`;
+}
+
+export async function cleanupSelectelOpenStackNetworkResources(input: {
+  account: ProviderAccount;
+  projectId: string;
+  projectName: string;
+  networkIds: string[];
+}) {
+  const auth = await getSelectelProjectAuth(input.account, input.projectName);
+  const networkIds = new Set(input.networkIds.filter(Boolean));
+  const result = { routerPortsDeleted: 0, routersDeleted: 0, networksDeleted: 0, skipped: 0 };
+
+  if (auth.networkUrls.length === 0) return result;
+
+  for (const baseUrl of auth.networkUrls) {
+    const [routersPayload, portsPayload, networksPayload] = await Promise.all([
+      openStackJson<{ routers?: OpenStackRouter[] }>({ account: input.account, projectName: input.projectName, baseUrl, path: "/v2.0/routers" }).catch(() => ({ routers: [] })),
+      openStackJson<{ ports?: OpenStackPort[] }>({ account: input.account, projectName: input.projectName, baseUrl, path: "/v2.0/ports" }).catch(() => ({ ports: [] })),
+      openStackJson<{ networks?: OpenStackNetwork[] }>({ account: input.account, projectName: input.projectName, baseUrl, path: "/v2.0/networks" }).catch(() => ({ networks: [] })),
+    ]);
+
+    const projectRouters = (routersPayload.routers ?? []).filter((router) => (router.project_id ?? router.tenant_id) === input.projectId);
+    const projectPorts = (portsPayload.ports ?? []).filter((port) => (port.project_id ?? port.tenant_id) === input.projectId);
+    const networkRouterPorts = projectPorts.filter(
+      (port) => port.device_owner === "network:router_interface" && port.device_id && port.network_id && networkIds.has(port.network_id),
+    );
+
+    for (const port of networkRouterPorts) {
+      const response = await openStackFetch({
+        account: input.account,
+        projectName: input.projectName,
+        url: neutronUrl(baseUrl, `/v2.0/routers/${port.device_id}/remove_router_interface`),
+        init: { method: "PUT", body: JSON.stringify({ port_id: port.id }) },
+      });
+      if (response.ok || response.status === 404) result.routerPortsDeleted += 1;
+      else result.skipped += 1;
+    }
+
+    for (const router of projectRouters) {
+      const remainingPorts = projectPorts.filter((port) => port.device_id === router.id && !networkRouterPorts.some((removed) => removed.id === port.id));
+      if (remainingPorts.length > 0) {
+        result.skipped += 1;
+        continue;
+      }
+      const response = await openStackFetch({
+        account: input.account,
+        projectName: input.projectName,
+        url: neutronUrl(baseUrl, `/v2.0/routers/${router.id}`),
+        init: { method: "DELETE" },
+      });
+      if (response.ok || response.status === 404 || response.status === 204) result.routersDeleted += 1;
+      else result.skipped += 1;
+    }
+
+    const projectNetworks = (networksPayload.networks ?? []).filter(
+      (network) => (network.project_id ?? network.tenant_id) === input.projectId && !network["router:external"] && networkIds.has(network.id),
+    );
+    for (const network of projectNetworks) {
+      const response = await openStackFetch({
+        account: input.account,
+        projectName: input.projectName,
+        url: neutronUrl(baseUrl, `/v2.0/networks/${network.id}`),
+        init: { method: "DELETE" },
+      });
+      if (response.ok || response.status === 404 || response.status === 204) result.networksDeleted += 1;
+      else result.skipped += 1;
+    }
+  }
+
+  return result;
 }
