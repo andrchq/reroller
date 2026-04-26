@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Button, Field, InfoTip, Input, Select } from "@/components/ui";
 import { createAccountAction } from "@/lib/actions";
 
 type Provider = "selectel" | "timeweb" | "regru";
@@ -16,8 +16,15 @@ export function AccountForm() {
   const [provider, setProvider] = useState<Provider>("selectel");
 
   return (
-    <form action={createAccountAction} className="flex min-h-[25rem] flex-col">
-      <div className="grid gap-3">
+    <form action={createAccountAction} className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-[#fff4d6]">Добавить провайдера</div>
+        <InfoTip label="Какие данные нужны">
+          Для Selectel укажите service user credentials. Для Timeweb Cloud и Reg.ru укажите API token.
+        </InfoTip>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Field label="Провайдер">
           <Select
             name="provider"
@@ -62,8 +69,8 @@ export function AccountForm() {
         )}
       </div>
 
-      <div className="mt-auto grid gap-3 pt-4">
-        <div className="min-h-10 rounded-md border border-[var(--line)] bg-black/20 px-3 py-2 text-xs leading-5 text-[#cfc2a4]">
+      <div className="grid gap-3 lg:grid-cols-[1fr_15rem] lg:items-end">
+        <div className="rounded-md border border-[var(--line)] bg-black/20 px-3 py-2 text-xs leading-5 text-[#cfc2a4]">
           {providerHints[provider]}
         </div>
         <Button type="submit">Сохранить аккаунт</Button>

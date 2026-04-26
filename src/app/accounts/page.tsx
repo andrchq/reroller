@@ -1,13 +1,18 @@
 import { AccountForm } from "@/components/account-form";
 import { AppShell, PageHeader } from "@/components/shell";
 import { SyncProjectsButton } from "@/components/sync-projects-button";
-import { Card, InfoTip } from "@/components/ui";
+import { Badge, Card, ListCard, PageNotice, SectionHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { providerLabel } from "@/lib/providers";
 
-export default async function AccountsPage() {
+export default async function AccountsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ noticeTone?: "good" | "bad" | "warn"; noticeTitle?: string; noticeMessage?: string; noticeDetails?: string }>;
+}) {
   await requireUser();
+  const params = await searchParams;
   const accounts = await prisma.providerAccount.findMany({
     orderBy: { createdAt: "desc" },
     include: { projects: { include: { regions: true } } },
@@ -16,59 +21,23 @@ export default async function AccountsPage() {
   return (
     <AppShell>
       <PageHeader title="Аккаунты" description="Учетные данные провайдеров и синхронизация проектов/зон." />
-      <div className="grid gap-4 xl:grid-cols-[1fr_24rem_22rem]">
-        <Card>
-          <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Список аккаунтов</div>
-          <div className="grid gap-3">
-            {accounts.map((account) => (
-              <div key={account.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-medium text-[#fff4d6]">{account.name}</div>
-                      <span className="rounded-full border border-[#f6c453]/20 bg-[#f6c453]/10 px-2 py-0.5 text-xs text-[#f6c453]">
-                        {providerLabel(account.provider)}
-                      </span>
-                    </div>
-                    {account.provider === "selectel" ? (
-                      <div className="text-sm text-[var(--muted)]">
-                        ID аккаунта: {account.accountId} / Пользователь: {account.username}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-[var(--muted)]">API token сохранен зашифрованно</div>
-                    )}
-                    <div className="mt-1 text-xs text-[var(--muted)]">Проектов: {account.projects.length}</div>
-                  </div>
-                  <SyncProjectsButton accountId={account.id} />
-                </div>
-                {account.projects.length > 0 ? (
-                  <div className="mt-3 grid gap-1 text-xs text-[var(--muted)]">
-                    {account.projects.map((project) => (
-                      <div key={project.id}>
-                        {project.name}: {project.regions.length > 0 ? project.regions.map((region) => region.name).join(", ") : "зон нет"}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-            {accounts.length === 0 ? <div className="text-sm text-[var(--muted)]">Аккаунтов пока нет.</div> : null}
-          </div>
-        </Card>
+      {params?.noticeTitle ? (
+        <PageNotice
+          tone={params.noticeTone ?? "good"}
+          title={params.noticeTitle}
+          message={params.noticeMessage}
+          details={params.noticeDetails}
+        />
+      ) : null}
 
-        <Card className="min-h-[31rem]">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-[#fff4d6]">Добавить провайдера</div>
-            <InfoTip label="Какие данные нужны">
-              Для Selectel укажите service user credentials. Для Timeweb Cloud и Reg.ru укажите API token.
-            </InfoTip>
-          </div>
+      <div className="grid gap-4">
+        <Card>
           <AccountForm />
         </Card>
 
         <Card>
-          <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Подсказки</div>
-          <div className="grid gap-3 text-sm text-[#cfc2a4]">
+          <SectionHeader title="Подсказки" description="Минимум данных для подключения и синхронизации провайдеров." />
+          <div className="grid gap-3 text-sm text-[#cfc2a4] md:grid-cols-2 xl:grid-cols-4">
             <HelpItem
               title="Selectel"
               text="Создайте сервисного пользователя, выдайте роль vpc.admin на нужный проект, затем сохраните ID аккаунта, имя пользователя и пароль."
@@ -85,6 +54,46 @@ export default async function AccountsPage() {
               title="Профили"
               text="После синхронизации создайте профиль поиска. Панель использует общую модель: проект, зоны, список целевых IP/CIDR и лимитер."
             />
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Созданные аккаунты" description="Синхронизируйте проекты и зоны перед созданием профилей." />
+          <div className="grid gap-3 xl:grid-cols-2">
+            {accounts.map((account) => (
+              <ListCard key={account.id}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-[#fff4d6]">{account.name}</div>
+                      <Badge>{providerLabel(account.provider)}</Badge>
+                    </div>
+                    {account.provider === "selectel" ? (
+                      <div className="mt-1 text-sm text-[var(--muted)]">
+                        ID: {account.accountId} / user: {account.username}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-sm text-[var(--muted)]">API token сохранен и зашифрован</div>
+                    )}
+                    <div className="mt-1 text-xs text-[var(--muted)]">Проектов: {account.projects.length}</div>
+                  </div>
+                  <SyncProjectsButton accountId={account.id} />
+                </div>
+                {account.projects.length > 0 ? (
+                  <div className="mt-3 grid gap-1.5 text-xs leading-5 text-[var(--muted)]">
+                    {account.projects.map((project) => (
+                      <div key={project.id} className="min-w-0">
+                        <span className="text-[#fff4d6]">{project.name}:</span>{" "}
+                        <span className="break-words">
+                          {project.regions.length > 0 ? project.regions.map((region) => region.name).join(", ") : "зон нет"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </ListCard>
+            ))}
+            {accounts.length === 0 ? <div className="text-sm text-[var(--muted)]">Аккаунтов пока нет.</div> : null}
           </div>
         </Card>
       </div>

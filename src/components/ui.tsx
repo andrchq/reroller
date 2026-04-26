@@ -10,6 +10,67 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   );
 }
 
+export function ListCard({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("rounded-md border border-[var(--line)] bg-black/20 p-3 transition hover:border-[#f6c453]/30", className)}
+      {...props}
+    />
+  );
+}
+
+export function SectionHeader({
+  title,
+  description,
+  action,
+  className,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between", className)}>
+      <div>
+        <div className="text-sm font-semibold text-[#fff4d6]">{title}</div>
+        {description ? <div className="mt-0.5 text-xs leading-5 text-[var(--muted)]">{description}</div> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+export function PageNotice({
+  tone = "good",
+  title,
+  message,
+  details,
+  className,
+}: {
+  tone?: "good" | "bad" | "warn";
+  title: string;
+  message?: string;
+  details?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-4 w-full rounded-2xl border px-4 py-3 text-sm shadow-2xl shadow-black/30 backdrop-blur",
+        tone === "good" && "border-emerald-300/25 bg-emerald-400/15 text-emerald-50",
+        tone === "bad" && "border-red-300/25 bg-red-400/15 text-red-50",
+        tone === "warn" && "border-amber-300/25 bg-amber-400/15 text-amber-50",
+        className,
+      )}
+    >
+      <div className="font-semibold">{title}</div>
+      {message ? <div className="mt-1 leading-5">{message}</div> : null}
+      {details ? <div className="mt-2 whitespace-pre-line leading-5 opacity-85">{details}</div> : null}
+    </div>
+  );
+}
+
 export function Button({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button

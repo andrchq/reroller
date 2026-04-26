@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="pb-28 lg:pl-64 lg:pb-0">
-        <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 lg:px-8">{children}</div>
+        <div className="w-full px-3 py-4 sm:px-5 lg:px-6 xl:px-8">{children}</div>
       </main>
 
       <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-6 gap-1 rounded-2xl border border-[#f6c453]/25 bg-[#12100c]/92 p-2 shadow-2xl shadow-black/60 backdrop-blur-xl lg:hidden">

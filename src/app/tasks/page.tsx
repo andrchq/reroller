@@ -1,6 +1,6 @@
 import { LiveRunLogs } from "@/components/live-run-logs";
 import { AppShell, PageHeader } from "@/components/shell";
-import { Badge, Button, Card, LinkButton } from "@/components/ui";
+import { Badge, Button, Card, LinkButton, ListCard, SectionHeader } from "@/components/ui";
 import { continueRunAction, startProfileAction, stopProfileRunsAction, stopRunAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { runStatusLabel } from "@/lib/labels";
@@ -66,18 +66,17 @@ export default async function TasksPage({
   return (
     <AppShell>
       <PageHeader title="Задачи" description="Управление профилями парсинга, запуском, остановкой и логами выполнения." />
-      <div className="grid gap-4 xl:grid-cols-[28rem_1fr]">
-        <div className="grid content-start gap-4">
-          <Card>
-            <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Профили-задачи</div>
-            <div className="grid gap-3">
+      <div className="grid gap-4">
+        <Card>
+          <SectionHeader title="Профили-задачи" description="Быстрый запуск, остановка и переход к последним логам." />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {profiles.map((profile) => {
                 const lastRun = profile.runs[0] ?? null;
                 const activeRun = profile.runs.find((run) => ["QUEUED", "RUNNING"].includes(run.status));
                 const isActive = Boolean(activeRun);
                 const regions = profile.selectedRegions.length > 0 ? profile.selectedRegions.map((region) => region.name).join(", ") : profile.region;
                 return (
-                  <div key={profile.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3">
+                  <ListCard key={profile.id}>
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div>
                         <div className="font-medium text-[#fff4d6]">{profile.name}</div>
@@ -112,20 +111,19 @@ export default async function TasksPage({
                         </a>
                       ) : null}
                     </div>
-                  </div>
+                  </ListCard>
                 );
               })}
               {profiles.length === 0 ? <div className="text-sm text-[var(--muted)]">Профилей пока нет. Создайте профиль на странице «Профили».</div> : null}
-            </div>
-          </Card>
+          </div>
+        </Card>
 
+        <div className="grid gap-4 xl:grid-cols-[24rem_1fr]">
           <Card>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-[#fff4d6]">История запусков</div>
-              {!showAllHistory && totalRuns > compactHistoryLimit ? (
-                <LinkButton href={pageLink({ runId: selected?.id, history: "all" })}>Еще</LinkButton>
-              ) : null}
-            </div>
+            <SectionHeader
+              title="История запусков"
+              action={!showAllHistory && totalRuns > compactHistoryLimit ? <LinkButton href={pageLink({ runId: selected?.id, history: "all" })}>Еще</LinkButton> : null}
+            />
             <div className="grid gap-2">
               {runs.map((run) => (
                 <a key={run.id} href={pageLink({ runId: run.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="rounded-md border border-[var(--line)] bg-black/20 p-3 hover:bg-[#f6c453]/10">
@@ -157,9 +155,8 @@ export default async function TasksPage({
               </div>
             ) : null}
           </Card>
-        </div>
 
-        <Card>
+          <Card>
           {selected ? (
             <>
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -195,7 +192,8 @@ export default async function TasksPage({
           ) : (
             <div className="text-sm text-[var(--muted)]">Выберите запуск.</div>
           )}
-        </Card>
+          </Card>
+        </div>
       </div>
     </AppShell>
   );

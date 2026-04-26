@@ -1,5 +1,5 @@
 import { AppShell, PageHeader } from "@/components/shell";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Card, SectionHeader } from "@/components/ui";
 import { logLevelLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
@@ -19,17 +19,17 @@ export async function Dashboard() {
   return (
     <AppShell>
       <PageHeader title="Обзор" description="Краткое состояние парсера и последних фоновых задач." />
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Аккаунты" value={accounts} />
         <Stat label="Профили" value={profiles} />
         <Stat label="Активные запуски" value={activeRuns} />
         <Stat label="Находки" value={findings} />
       </div>
       <Card className="mt-4">
-        <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Последние логи</div>
+        <SectionHeader title="Последние логи" description="Свежие события фоновых задач." />
         <div className="grid gap-2">
           {logs.map((log) => (
-            <div key={log.id} className="grid gap-1 rounded-md bg-black/20 p-3 text-sm md:grid-cols-[8rem_1fr_10rem]">
+            <div key={log.id} className="grid gap-2 rounded-md bg-black/20 p-3 text-sm md:grid-cols-[8rem_1fr_10rem]">
               <Badge tone={log.level === "ERROR" ? "bad" : log.level === "SUCCESS" ? "good" : "default"}>
                 {logLevelLabel(log.level)}
               </Badge>

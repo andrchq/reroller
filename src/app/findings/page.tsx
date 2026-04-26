@@ -1,5 +1,5 @@
 import { AppShell, PageHeader } from "@/components/shell";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, ListCard, SectionHeader } from "@/components/ui";
 import { continueFindingProfileAction, deleteFindingAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -16,9 +16,10 @@ export default async function FindingsPage() {
     <AppShell>
       <PageHeader title="Находки" description="Зарезервированные IP, которые совпали с целевым списком." />
       <Card>
-        <div className="grid gap-3">
+        <SectionHeader title="Найденные IP" description="Подходящие адреса, которые оставлены зарезервированными у провайдера." />
+        <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {findings.map((finding) => (
-            <div key={finding.id} className="grid gap-3 rounded-md border border-[var(--line)] bg-black/20 p-3 lg:grid-cols-[1fr_12rem_17rem]">
+            <ListCard key={finding.id} className="grid content-between gap-3">
               <div>
                 <div className="text-lg font-semibold text-[#f6c453]">{finding.floatingIpAddress}</div>
                 <div className="text-sm text-[var(--muted)]">
@@ -28,11 +29,11 @@ export default async function FindingsPage() {
                   {providerLabel(finding.searchProfile.providerAccount.provider)} / ID Floating IP: {finding.floatingIpId}
                 </div>
               </div>
-              <div className="grid content-start gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge>{finding.region}</Badge>
                 <div className="text-xs text-[var(--muted)]">{finding.createdAt.toLocaleString("ru-RU")}</div>
               </div>
-              <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+              <div className="flex flex-wrap items-start gap-2">
                 <form action={continueFindingProfileAction}>
                   <input type="hidden" name="findingId" value={finding.id} />
                   <Button type="submit">Продолжить поиск</Button>
@@ -44,7 +45,7 @@ export default async function FindingsPage() {
                   </Button>
                 </form>
               </div>
-            </div>
+            </ListCard>
           ))}
           {findings.length === 0 ? <div className="text-sm text-[var(--muted)]">Совпадений пока нет.</div> : null}
         </div>

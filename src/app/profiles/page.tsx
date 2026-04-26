@@ -1,6 +1,6 @@
 import { ProfileForm } from "@/components/profile-form";
 import { AppShell, PageHeader } from "@/components/shell";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, ListCard, PageNotice, SectionHeader } from "@/components/ui";
 import { cleanupSelectelProfileIpsAction, duplicateProfileAction, startProfileAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -33,20 +33,17 @@ export default async function ProfilesPage({
   return (
     <AppShell>
       <PageHeader title="Профили" description="Целевые IP, проект, зоны и лимитер фоновой задачи." />
-      <div className="grid gap-4 xl:grid-cols-[1fr_28rem]">
+      {params?.cleanup ? <PageNotice title="Очистка Selectel завершена" message={params.cleanup} /> : null}
+      {params?.cleanupError ? <PageNotice tone="bad" title="Ошибка очистки" message={params.cleanupError} /> : null}
+      <div className="grid gap-4">
+        <ProfileForm projects={projectOptions} />
         <Card>
-          <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Список профилей</div>
-          {params?.cleanup ? (
-            <div className="mb-3 rounded-md border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">{params.cleanup}</div>
-          ) : null}
-          {params?.cleanupError ? (
-            <div className="mb-3 rounded-md border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">{params.cleanupError}</div>
-          ) : null}
-          <div className="grid gap-3">
+          <SectionHeader title="Список профилей" description="Запуск, дублирование, очистка Selectel и редактирование параметров поиска." />
+          <div className="grid gap-3 xl:grid-cols-2">
             {profiles.map((profile) => {
               const selectedRegions = profile.selectedRegions.length > 0 ? profile.selectedRegions.map((region) => region.name) : [profile.region];
               return (
-                <div key={profile.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3">
+                <ListCard key={profile.id}>
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -113,13 +110,12 @@ export default async function ProfilesPage({
                       />
                     </div>
                   </details>
-                </div>
+                </ListCard>
               );
             })}
             {profiles.length === 0 ? <div className="text-sm text-[var(--muted)]">Сначала синхронизируйте проект и создайте профиль.</div> : null}
           </div>
         </Card>
-        <ProfileForm projects={projectOptions} />
       </div>
     </AppShell>
   );

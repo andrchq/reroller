@@ -145,7 +145,7 @@ export function ProfileForm({
             <input type="hidden" name="serverWaitMaxSeconds" value={profile?.serverWaitMaxSeconds ?? 240} />
           </>
         )}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Запросов в минуту">
             <Input name="requestsPerMinute" type="number" defaultValue={profile?.requestsPerMinute ?? 6} min={1} />
           </Field>
