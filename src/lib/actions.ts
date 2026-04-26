@@ -8,9 +8,10 @@ import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { enqueueRun } from "@/lib/queue";
 import { listRegRuCreateRegions, validateRegRuAccount } from "@/lib/regru";
-import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listSelectelProjects } from "@/lib/selectel";
+import { defaultSelectelRegions, extractProjectRegions, getSelectelProjectDetails, listFloatingIps, listSelectelProjects, releaseFloatingIp } from "@/lib/selectel";
 import { buildTelegramTestMessage, sendTelegramDirect } from "@/lib/telegram";
 import { listTimewebProjects, listTimewebZones } from "@/lib/timeweb";
+import { targetMatchesIp } from "@/lib/ip-matcher";
 import { splitLines } from "@/lib/utils";
 
 function requiredString(formData: FormData, key: string) {
@@ -378,6 +379,67 @@ export async function duplicateProfileAction(formData: FormData) {
   revalidatePath("/profiles");
   revalidatePath("/tasks");
   redirect("/profiles");
+}
+
+export async function cleanupSelectelProfileIpsAction(formData: FormData) {
+  await requireUser();
+  const profileId = requiredString(formData, "profileId");
+  const profile = await prisma.searchProfile.findUnique({
+    where: { id: profileId },
+    include: {
+      providerAccount: true,
+      projectBinding: true,
+      targets: true,
+    },
+  });
+
+  if (!profile) redirect(`/profiles?cleanupError=${encodeURIComponent("Профиль не найден")}`);
+  if (profile.providerAccount.provider !== "selectel") {
+    redirect(`/profiles?cleanupError=${encodeURIComponent("Очистка доступна только для Selectel")}`);
+  }
+
+  const targets = profile.targets.map((target) => target.value);
+  let floatingIps;
+  try {
+    floatingIps = await listFloatingIps({
+      account: profile.providerAccount,
+      projectId: profile.projectBinding.externalProjectId,
+      projectName: profile.projectBinding.name,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Не удалось получить список Floating IP Selectel";
+    redirect(`/profiles?cleanupError=${encodeURIComponent(message)}`);
+  }
+
+  let deleted = 0;
+  let protectedCount = 0;
+  let failed = 0;
+
+  for (const floatingIp of floatingIps) {
+    const isProtected = targets.some((target) => targetMatchesIp(target, floatingIp.floating_ip_address));
+    if (isProtected) {
+      protectedCount += 1;
+      continue;
+    }
+
+    try {
+      await releaseFloatingIp({
+        account: profile.providerAccount,
+        projectName: profile.projectBinding.name,
+        floatingIpId: floatingIp.id,
+      });
+      await prisma.finding.deleteMany({ where: { floatingIpId: floatingIp.id } });
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  revalidatePath("/profiles");
+  revalidatePath("/findings");
+  revalidatePath("/tasks");
+  const message = encodeURIComponent(`Удалено: ${deleted}. Защищено целями профиля: ${protectedCount}. Ошибок: ${failed}.`);
+  redirect(`/profiles?cleanup=${message}`);
 }
 
 export async function startProfileAction(formData: FormData) {

@@ -1,12 +1,17 @@
 import { ProfileForm } from "@/components/profile-form";
 import { AppShell, PageHeader } from "@/components/shell";
 import { Badge, Button, Card } from "@/components/ui";
-import { duplicateProfileAction, startProfileAction } from "@/lib/actions";
+import { cleanupSelectelProfileIpsAction, duplicateProfileAction, startProfileAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export default async function ProfilesPage() {
+export default async function ProfilesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ cleanup?: string; cleanupError?: string }>;
+}) {
   await requireUser();
+  const params = await searchParams;
   const [profiles, projects] = await Promise.all([
     prisma.searchProfile.findMany({
       orderBy: { createdAt: "desc" },
@@ -31,6 +36,12 @@ export default async function ProfilesPage() {
       <div className="grid gap-4 xl:grid-cols-[1fr_28rem]">
         <Card>
           <div className="mb-3 text-sm font-semibold text-[#fff4d6]">Список профилей</div>
+          {params?.cleanup ? (
+            <div className="mb-3 rounded-md border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">{params.cleanup}</div>
+          ) : null}
+          {params?.cleanupError ? (
+            <div className="mb-3 rounded-md border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">{params.cleanupError}</div>
+          ) : null}
           <div className="grid gap-3">
             {profiles.map((profile) => {
               const selectedRegions = profile.selectedRegions.length > 0 ? profile.selectedRegions.map((region) => region.name) : [profile.region];
@@ -67,6 +78,14 @@ export default async function ProfilesPage() {
                           Дублировать
                         </Button>
                       </form>
+                      {profile.providerAccount.provider === "selectel" ? (
+                        <form action={cleanupSelectelProfileIpsAction}>
+                          <input type="hidden" name="profileId" value={profile.id} />
+                          <Button type="submit" className="border border-red-400/30 bg-red-400/10 text-red-100 hover:bg-red-400/20">
+                            Очистить IP
+                          </Button>
+                        </form>
+                      ) : null}
                     </div>
                   </div>
                   <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">

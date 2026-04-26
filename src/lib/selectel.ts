@@ -114,6 +114,21 @@ export function normalizeFloatingIpPayload(payload: unknown): SelectelFloatingIp
   return null;
 }
 
+export function normalizeFloatingIpListPayload(payload: unknown): SelectelFloatingIp[] {
+  const root = asRecord(payload);
+  if (!root) return [];
+
+  const rawItems = Array.isArray(root.floatingips)
+    ? root.floatingips
+    : Array.isArray(root.floating_ips)
+      ? root.floating_ips
+      : Array.isArray(root)
+        ? root
+        : [];
+
+  return rawItems.map((item) => normalizeFloatingIpPayload(item)).filter((item): item is SelectelFloatingIp => Boolean(item));
+}
+
 function shortPayload(payload: unknown) {
   return JSON.stringify(payload).slice(0, 700);
 }
@@ -371,6 +386,25 @@ export async function allocateFloatingIp(input: {
     throw new Error(`Selectel floating IP create returned an unexpected payload: ${shortPayload(payload)}`);
   }
   return floatingIp;
+}
+
+export async function listFloatingIps(input: {
+  account: ProviderAccount;
+  projectId: string;
+  projectName: string;
+}) {
+  const response = await selectelFetch(
+    input.account,
+    `/floatingips/projects/${input.projectId}`,
+    { method: "GET" },
+    { scope: { type: "project", projectName: input.projectName } },
+  );
+
+  if (!response.ok) {
+    throw await buildSelectelError(response, "Selectel floating IP list failed");
+  }
+
+  return normalizeFloatingIpListPayload(await response.json());
 }
 
 export async function releaseFloatingIp(input: {
