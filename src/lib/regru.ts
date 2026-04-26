@@ -15,6 +15,7 @@ type RegRuErrorDetails = {
 type RegRuReglet = {
   id: number;
   archived_at?: string | null;
+  created_at?: string | null;
   name?: string;
   hostname?: string;
   ip?: string;
@@ -232,6 +233,18 @@ async function getRegRuServer(account: ProviderAccount, serverId: string) {
   return payload.reglet ?? null;
 }
 
+async function listRegRuServers(account: ProviderAccount) {
+  const response = await regRuFetch(account, "/v1/reglets");
+  if (!response.ok) throw await createRegRuApiError("servers list", response);
+  const payload = (await response.json()) as { reglets?: RegRuReglet[] };
+  return payload.reglets ?? [];
+}
+
+async function findRegRuServerByName(account: ProviderAccount, name: string) {
+  const servers = await listRegRuServers(account);
+  return servers.find((server) => !server.archived_at && server.status !== "archive" && server.name === name) ?? null;
+}
+
 async function deleteRegRuServer(account: ProviderAccount, serverId: string) {
   const response = await regRuFetch(account, `/v1/reglets/${encodeURIComponent(serverId)}`, { method: "DELETE" });
   if (!response.ok && response.status !== 404) throw await createRegRuApiError("server delete", response);
@@ -245,21 +258,11 @@ function isImageNotFoundError(error: unknown) {
 
 async function createRegRuServer(input: {
   account: ProviderAccount;
-  name: string;
-  region: string;
-  planSlug: string;
-  image: string | number;
+  body: Record<string, string | number | boolean>;
 }) {
   const response = await regRuFetch(input.account, "/v1/reglets", {
     method: "POST",
-    body: JSON.stringify({
-      name: input.name,
-      size: input.planSlug,
-      image: input.image,
-      region: input.region,
-      region_slug: input.region,
-      backups: false,
-    }),
+    body: JSON.stringify(input.body),
   });
 
   if (!response.ok) throw await createRegRuApiError("server create", response);
@@ -267,6 +270,94 @@ async function createRegRuServer(input: {
   const created = payload.reglet;
   if (!created?.id) throw new Error(`Reg.ru server create returned an unexpected payload: ${JSON.stringify(payload).slice(0, 700)}`);
   return created;
+}
+
+function uniqueCreateBodies(input: {
+  name: string;
+  region: string;
+  planSlug: string;
+  imageSlug?: string;
+  imageId?: number;
+}) {
+  const imageValues = [input.imageSlug, input.imageId].filter((value): value is string | number => value !== undefined);
+  const bodies: Array<{ label: string; body: Record<string, string | number | boolean> }> = [];
+
+  for (const image of imageValues) {
+    bodies.push({
+      label: `region_slug + image ${image}`,
+      body: {
+        name: input.name,
+        size: input.planSlug,
+        image,
+        region_slug: input.region,
+      },
+    });
+  }
+
+  for (const image of imageValues) {
+    bodies.push({
+      label: `image ${image}`,
+      body: {
+        name: input.name,
+        size: input.planSlug,
+        image,
+      },
+    });
+  }
+
+  const seen = new Set<string>();
+  return bodies.filter((candidate) => {
+    const key = JSON.stringify(candidate.body);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function createRegRuServerWithFallbacks(input: {
+  account: ProviderAccount;
+  name: string;
+  region: string;
+  planSlug: string;
+  image: RegRuImage;
+  onLog?: (message: string) => Promise<void>;
+}) {
+  const candidates = uniqueCreateBodies({
+    name: input.name,
+    region: input.region,
+    planSlug: input.planSlug,
+    imageSlug: input.image.slug,
+    imageId: input.image.id,
+  });
+  let lastError: unknown = null;
+
+  for (const [index, candidate] of candidates.entries()) {
+    if (index > 0) {
+      await input.onLog?.(`Reg.ru: повторяю создание временного сервера, вариант: ${candidate.label}.`);
+    }
+
+    try {
+      return await createRegRuServer({
+        account: input.account,
+        body: candidate.body,
+      });
+    } catch (error) {
+      lastError = error;
+
+      await wait(2_000);
+      const existing = await findRegRuServerByName(input.account, input.name).catch(() => null);
+      if (existing?.id) {
+        await input.onLog?.(`Reg.ru: API вернул ошибку, но сервер ${existing.id} уже создан. Продолжаю проверку IP.`);
+        return existing;
+      }
+
+      if (!isImageNotFoundError(error) && !(error instanceof RegRuApiError && error.status >= 500)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Reg.ru: сервер не создан, все варианты запроса отклонены.");
 }
 
 export async function allocateRegRuFloatingIp(input: {
@@ -289,26 +380,14 @@ export async function allocateRegRuFloatingIp(input: {
   await input.onLog?.(
     `Reg.ru: создаю временный сервер в ${input.region}. Тариф: ${plan.slug}. Образ: ${image.slug ?? image.id}.`,
   );
-  let created: RegRuReglet;
-  try {
-    created = await createRegRuServer({
-      account: input.account,
-      name,
-      region: input.region,
-      planSlug: plan.slug,
-      image: image.slug ?? image.id!,
-    });
-  } catch (error) {
-    if (!isImageNotFoundError(error) || !image.id || image.slug === undefined) throw error;
-    await input.onLog?.(`Reg.ru: образ ${image.slug} не принят API v1, повторяю создание по ID образа ${image.id}.`);
-    created = await createRegRuServer({
-      account: input.account,
-      name,
-      region: input.region,
-      planSlug: plan.slug,
-      image: image.id,
-    });
-  }
+  const created = await createRegRuServerWithFallbacks({
+    account: input.account,
+    name,
+    region: input.region,
+    planSlug: plan.slug,
+    image,
+    onLog: input.onLog,
+  });
 
   const initialIp = normalizeRegRuRegletIp(created);
   if (initialIp?.floating_ip_address) return initialIp;
