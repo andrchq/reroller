@@ -26,10 +26,12 @@ Usage:
   reroller logs            Follow app and worker logs
   reroller logs-app        Follow app logs
   reroller logs-worker     Follow worker logs
-  reroller update          Pull GitHub, install deps, migrate, build, restart
+  reroller update          Pull GitHub, install deps, migrate, build, restart app only
   reroller pull            Pull GitHub only
   reroller migrate         Apply Prisma migrations
   reroller build           Generate Prisma client and build Next.js
+  reroller restart-app     Restart app only
+  reroller restart-worker  Restart worker only
   reroller reset-admin     Reset admin login and password
   reroller env             Print active config path and app dir
 
@@ -54,7 +56,9 @@ run_update() {
   npx prisma migrate deploy
   npm run build
   require_systemd
-  systemctl restart "$APP_SERVICE" "$WORKER_SERVICE"
+  systemctl restart "$APP_SERVICE"
+  echo "App restarted. Worker was not restarted, so active runs continue unchanged."
+  echo "When there are no active runs and you want the worker to use the new code, run: reroller restart-worker"
   systemctl --no-pager --lines=20 status "$APP_SERVICE" "$WORKER_SERVICE" || true
 }
 
@@ -70,6 +74,14 @@ case "${1:-}" in
   restart)
     require_systemd
     systemctl restart "$APP_SERVICE" "$WORKER_SERVICE"
+    ;;
+  restart-app)
+    require_systemd
+    systemctl restart "$APP_SERVICE"
+    ;;
+  restart-worker)
+    require_systemd
+    systemctl restart "$WORKER_SERVICE"
     ;;
   status)
     require_systemd

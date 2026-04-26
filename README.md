@@ -98,6 +98,8 @@ reroller logs
 reroller logs-app
 reroller logs-worker
 reroller restart
+reroller restart-app
+reroller restart-worker
 reroller stop
 reroller start
 ```
@@ -110,10 +112,16 @@ sudo reroller reset-admin admin 'new-strong-password'
 
 The login form uses a plain login name, not email.
 
-Update from GitHub, install dependencies, apply Prisma migrations, build, and restart:
+Update from GitHub, install dependencies, apply Prisma migrations, build, and restart the web panel only:
 
 ```bash
 sudo reroller update
+```
+
+`reroller update` does not restart the worker, so created and currently running jobs keep working. When there are no active runs and you want the worker to use the new code, run:
+
+```bash
+sudo reroller restart-worker
 ```
 
 Override deploy defaults when needed:
