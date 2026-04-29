@@ -7,8 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { releaseProviderFloatingIp } from "@/lib/provider-floating-ip";
 import { createRedisConnection, runQueueName, type RunJob } from "@/lib/queue";
 import { appendRunLog } from "@/lib/run-log";
-import { buildFindingMessage, sendTelegramMessage } from "@/lib/telegram";
+import { buildFindingMessage, buildRunAlertMessage, sendTelegramMessage } from "@/lib/telegram";
 import { wait } from "@/lib/utils";
+import { providerLabel } from "@/lib/providers";
 
 type FailureReason =
   | "AUTH"
@@ -205,6 +206,39 @@ async function failRun(runId: string, reason: FailureReason) {
     where: { id: runId },
     data: { status: "FAILED", failureReason: reason, stoppedAt: new Date() },
   });
+}
+
+async function sendRunAlert(input: {
+  runId: string;
+  title: string;
+  reason: string;
+  region?: string;
+}) {
+  const run = await prisma.run.findUnique({
+    where: { id: input.runId },
+    include: {
+      searchProfile: {
+        include: {
+          providerAccount: true,
+          projectBinding: true,
+        },
+      },
+    },
+  });
+  if (!run) return false;
+
+  return sendTelegramMessage(
+    buildRunAlertMessage({
+      title: input.title,
+      profileName: run.searchProfile.name,
+      accountName: run.searchProfile.providerAccount.name,
+      providerName: providerLabel(run.searchProfile.providerAccount.provider),
+      projectName: run.searchProfile.projectBinding.name,
+      region: input.region,
+      runId: input.runId,
+      reason: input.reason,
+    }),
+  );
 }
 
 async function processRun(runId: string) {
@@ -481,10 +515,23 @@ async function processRun(runId: string) {
 
       if (error instanceof TimewebApiError && error.code === "no_balance_for_month") {
         await appendRunLog(runId, "ERROR", error.message);
+        const reason =
+          "Timeweb: недостаточно баланса или месячного лимита для создания Floating IP. Пополните баланс или проверьте лимиты в панели Timeweb, затем запустите профиль снова.";
         await appendRunLog(
           runId,
           "WARN",
-          "Задача остановлена автоматически: Timeweb не разрешает создать Floating IP без доступного баланса или месячного лимита.",
+          reason,
+        );
+        const sent = await sendRunAlert({
+          runId,
+          title: "задача остановлена",
+          reason,
+          region: selectedRegion,
+        });
+        await appendRunLog(
+          runId,
+          sent ? "SUCCESS" : "WARN",
+          sent ? "Telegram-уведомление об остановке отправлено" : "Telegram не настроен или уведомление об остановке не отправлено",
         );
         await failRun(runId, "BALANCE");
         return;
@@ -492,7 +539,19 @@ async function processRun(runId: string) {
 
       if (error instanceof RegRuApiError && error.fatal) {
         await appendRunLog(runId, "ERROR", error.message);
-        await appendRunLog(runId, "WARN", "Задача остановлена автоматически: ошибка Reg.ru не исправится повторными попытками.");
+        const reason = `Reg.ru: задача остановлена автоматически. Ошибка не исправится повторными попытками: ${error.message}`;
+        await appendRunLog(runId, "WARN", reason);
+        const sent = await sendRunAlert({
+          runId,
+          title: "задача остановлена",
+          reason,
+          region: selectedRegion,
+        });
+        await appendRunLog(
+          runId,
+          sent ? "SUCCESS" : "WARN",
+          sent ? "Telegram-уведомление об остановке отправлено" : "Telegram не настроен или уведомление об остановке не отправлено",
+        );
         await failRun(runId, classifyFailureReason(error));
         return;
       }
@@ -548,6 +607,11 @@ const worker = new Worker<RunJob>(
 worker.on("failed", async (job, error) => {
   if (job?.data.runId) {
     await appendRunLog(job.data.runId, "ERROR", error.message);
+    await sendRunAlert({
+      runId: job.data.runId,
+      title: "worker остановил задачу",
+      reason: error.message,
+    });
     await failRun(job.data.runId, classifyFailureReason(error));
   }
 });

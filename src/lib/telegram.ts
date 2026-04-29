@@ -42,6 +42,7 @@ function formatTelegramTime(date = new Date()) {
 export function buildFindingMessage(input: {
   profileName: string;
   accountName: string;
+  providerName?: string;
   projectName: string;
   region: string;
   floatingIpAddress: string;
@@ -52,6 +53,7 @@ export function buildFindingMessage(input: {
     "",
     `◽️ <b>Профиль:</b> ${escapeHtml(input.profileName)}`,
     `◽️ <b>Аккаунт:</b> ${escapeHtml(input.accountName)}`,
+    input.providerName ? `◽️ <b>Провайдер:</b> ${escapeHtml(input.providerName)}` : null,
     `◽️ <b>Проект:</b> ${escapeHtml(input.projectName)}`,
     `◽️ <b>Регион:</b> ${escapeHtml(input.region)}`,
     separator,
@@ -59,7 +61,34 @@ export function buildFindingMessage(input: {
     `◽️ <b>ID Floating IP:</b> <code>${escapeHtml(input.floatingIpId)}</code>`,
     separator,
     `<b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
+}
+
+export function buildRunAlertMessage(input: {
+  title: string;
+  profileName: string;
+  accountName: string;
+  providerName: string;
+  projectName: string;
+  region?: string;
+  runId: string;
+  reason: string;
+}) {
+  return [
+    `<b>${premiumEmoji.demon} Reroller: ${escapeHtml(input.title)}</b>`,
+    "",
+    "",
+    `◽️ <b>Профиль:</b> ${escapeHtml(input.profileName)}`,
+    `◽️ <b>Аккаунт:</b> ${escapeHtml(input.accountName)}`,
+    `◽️ <b>Провайдер:</b> ${escapeHtml(input.providerName)}`,
+    `◽️ <b>Проект:</b> ${escapeHtml(input.projectName)}`,
+    input.region ? `◽️ <b>Регион:</b> ${escapeHtml(input.region)}` : null,
+    separator,
+    `◽️ <b>ID запуска:</b> <code>${escapeHtml(input.runId)}</code>`,
+    `◽️ <b>Причина:</b> ${escapeHtml(input.reason)}`,
+    separator,
+    `<b>${premiumEmoji.calendar} Время:</b> ${formatTelegramTime()}`,
+  ].filter(Boolean).join("\n");
 }
 
 export function buildTelegramTestMessage() {
