@@ -36,6 +36,13 @@ function optionalNumber(formData: FormData, key: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
+function optionalPositiveNumber(formData: FormData, key: string) {
+  const raw = String(formData.get(key) ?? "").trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
+}
+
 function rateLimitInput(formData: FormData) {
   const minDelaySeconds = optionalNumber(formData, "minDelaySeconds", 10);
   const maxDelaySeconds = Math.max(minDelaySeconds, optionalNumber(formData, "maxDelaySeconds", 30));
@@ -401,8 +408,9 @@ export async function createProfileAction(formData: FormData) {
       },
     },
   });
+  revalidatePath("/accounts");
   revalidatePath("/profiles");
-  redirect("/profiles");
+  redirect("/accounts");
 }
 
 export async function updateProfileAction(formData: FormData) {
@@ -449,8 +457,9 @@ export async function updateProfileAction(formData: FormData) {
   });
 
   revalidatePath("/profiles");
+  revalidatePath("/accounts");
   revalidatePath("/tasks");
-  redirect("/profiles");
+  redirect("/accounts");
 }
 
 export async function duplicateProfileAction(formData: FormData) {
@@ -496,22 +505,24 @@ export async function duplicateProfileAction(formData: FormData) {
   });
 
   revalidatePath("/profiles");
+  revalidatePath("/accounts");
   revalidatePath("/tasks");
-  redirect("/profiles");
+  redirect("/accounts");
 }
 
 export async function deleteProfileAction(formData: FormData) {
   await requireUser();
   const profileId = requiredString(formData, "profileId");
   if (await stopActiveProfileRuns(profileId)) {
-    redirect(`/profiles?cleanupError=${encodeURIComponent("У профиля были активные задачи. Я остановил их безопасно. Нажмите удалить еще раз после остановки текущего шага.")}`);
+    redirect(`/accounts?cleanupError=${encodeURIComponent("У профиля были активные задачи. Я остановил их безопасно. Нажмите удалить еще раз после остановки текущего шага.")}`);
   }
   await releaseFindings({ searchProfileId: profileId });
   await prisma.searchProfile.delete({ where: { id: profileId } });
+  revalidatePath("/accounts");
   revalidatePath("/profiles");
   revalidatePath("/tasks");
   revalidatePath("/findings");
-  redirect("/profiles");
+  redirect("/accounts");
 }
 
 export async function cleanupSelectelProfileIpsAction(formData: FormData) {
@@ -526,9 +537,9 @@ export async function cleanupSelectelProfileIpsAction(formData: FormData) {
     },
   });
 
-  if (!profile) redirect(`/profiles?cleanupError=${encodeURIComponent("Профиль не найден")}`);
+  if (!profile) redirect(`/accounts?cleanupError=${encodeURIComponent("Профиль не найден")}`);
   if (profile.providerAccount.provider !== "selectel") {
-    redirect(`/profiles?cleanupError=${encodeURIComponent("Очистка доступна только для Selectel")}`);
+    redirect(`/accounts?cleanupError=${encodeURIComponent("Очистка доступна только для Selectel")}`);
   }
 
   const targets = profile.targets.map((target) => target.value);
@@ -541,7 +552,7 @@ export async function cleanupSelectelProfileIpsAction(formData: FormData) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось получить список Floating IP Selectel";
-    redirect(`/profiles?cleanupError=${encodeURIComponent(message)}`);
+    redirect(`/accounts?cleanupError=${encodeURIComponent(message)}`);
   }
 
   let deleted = 0;
@@ -626,17 +637,34 @@ export async function cleanupSelectelProfileIpsAction(formData: FormData) {
   const message = encodeURIComponent(
     `IP удалено: ${deleted}. IP защищено: ${protectedCount}. Ошибок IP: ${failed}. Подсетей удалено: ${subnetsDeleted}. Портов роутера удалено: ${routerPortsDeleted}. Роутеров удалено: ${routersDeleted}. Сетей удалено: ${networksDeleted}. Пропущено сетевых ресурсов: ${subnetsSkipped + networkSkipped}.`,
   );
-  redirect(`/profiles?cleanup=${message}`);
+  redirect(`/accounts?cleanup=${message}`);
 }
 
 export async function startProfileAction(formData: FormData) {
   await requireUser();
   const profileId = requiredString(formData, "profileId");
+  await prisma.searchProfile.update({ where: { id: profileId }, data: { enabled: true } });
   const run = await prisma.run.create({ data: { searchProfileId: profileId, status: "QUEUED" } });
   await enqueueRun(run.id);
   revalidatePath("/runs");
   revalidatePath("/tasks");
-  redirect(`/tasks?run=${run.id}`);
+  revalidatePath("/accounts");
+  redirect(`/tasks?profile=${profileId}&run=${run.id}`);
+}
+
+export async function pauseProfileAction(formData: FormData) {
+  await requireUser();
+  const profileId = requiredString(formData, "profileId");
+  await prisma.searchProfile.update({ where: { id: profileId }, data: { enabled: false } });
+  await prisma.run.updateMany({
+    where: {
+      searchProfileId: profileId,
+      status: { in: ["QUEUED", "RUNNING"] },
+    },
+    data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+  });
+  revalidatePath("/accounts");
+  revalidatePath("/tasks");
 }
 
 export async function continueRunAction(formData: FormData) {
@@ -734,6 +762,101 @@ export async function stopProfileRunsAction(formData: FormData) {
   });
   revalidatePath("/runs");
   revalidatePath("/tasks");
+}
+
+export async function bulkProfilesAction(formData: FormData) {
+  await requireUser();
+  const profileIds = [...new Set(formData.getAll("profileIds").map((value) => String(value).trim()).filter(Boolean))];
+  if (profileIds.length === 0) redirect("/tasks?deleteNotice=" + encodeURIComponent("Выберите задачи для массового изменения."));
+
+  const profiles = await prisma.searchProfile.findMany({
+    where: { id: { in: profileIds } },
+    include: { providerAccount: true },
+  });
+  if (profiles.length !== profileIds.length) throw new Error("Some profiles were not found");
+
+  const providers = new Set(profiles.map((profile) => profile.providerAccount.provider));
+  if (providers.size !== 1) {
+    redirect("/tasks?deleteNotice=" + encodeURIComponent("Массово менять можно только задачи одного хостинга. Выберите профили одного провайдера."));
+  }
+
+  const operation = requiredString(formData, "bulkOperation");
+  if (operation === "start") {
+    await prisma.searchProfile.updateMany({ where: { id: { in: profileIds } }, data: { enabled: true } });
+    for (const profileId of profileIds) {
+      const run = await prisma.run.create({ data: { searchProfileId: profileId, status: "QUEUED" } });
+      await enqueueRun(run.id);
+    }
+  } else if (operation === "pause") {
+    await prisma.searchProfile.updateMany({ where: { id: { in: profileIds } }, data: { enabled: false } });
+    await prisma.run.updateMany({
+      where: { searchProfileId: { in: profileIds }, status: { in: ["QUEUED", "RUNNING"] } },
+      data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+    });
+  } else if (operation === "stop") {
+    await prisma.run.updateMany({
+      where: { searchProfileId: { in: profileIds }, status: { in: ["QUEUED", "RUNNING"] } },
+      data: { status: "STOPPED", failureReason: null, stoppedAt: new Date() },
+    });
+  } else if (operation === "update") {
+    const projectBindingId = String(formData.get("projectBindingId") ?? "").trim();
+    const project = projectBindingId
+      ? await prisma.projectBinding.findUnique({
+          where: { id: projectBindingId },
+          include: { providerAccount: true, regions: true },
+        })
+      : null;
+    if (project && project.providerAccount.provider !== profiles[0].providerAccount.provider) {
+      redirect("/tasks?deleteNotice=" + encodeURIComponent("Новый проект должен быть из того же хостинга, что и выбранные задачи."));
+    }
+
+    const rawRegions = String(formData.get("bulkRegions") ?? "").trim();
+    const regions = rawRegions ? splitLines(rawRegions.replaceAll(",", "\n")) : [];
+    if (project) {
+      const nextRegions = regions.length > 0 ? regions : project.regions.slice(0, 1).map((region) => region.name);
+      assertProjectRegions(project, nextRegions);
+      await prisma.searchProfile.updateMany({
+        where: { id: { in: profileIds } },
+        data: {
+          providerAccountId: project.providerAccountId,
+          projectBindingId: project.id,
+          region: nextRegions[0],
+        },
+      });
+      await prisma.searchProfileRegion.deleteMany({ where: { searchProfileId: { in: profileIds } } });
+      await prisma.searchProfileRegion.createMany({
+        data: profileIds.flatMap((profileId) => nextRegions.map((name) => ({ searchProfileId: profileId, name }))),
+      });
+    }
+
+    const rateLimitPatch: Prisma.RateLimitPolicyUpdateManyMutationInput = {};
+    const requestsPerMinute = optionalPositiveNumber(formData, "requestsPerMinute");
+    const minDelaySeconds = optionalPositiveNumber(formData, "minDelaySeconds");
+    const maxDelaySeconds = optionalPositiveNumber(formData, "maxDelaySeconds");
+    const errorDelaySeconds = optionalPositiveNumber(formData, "errorDelaySeconds");
+    const maxRuntimeSeconds = optionalPositiveNumber(formData, "maxRuntimeSeconds");
+    const maxFindings = optionalPositiveNumber(formData, "maxFindings");
+    const restMinMinutes = optionalPositiveNumber(formData, "restMinMinutes");
+    const restMaxMinutes = optionalPositiveNumber(formData, "restMaxMinutes");
+    if (requestsPerMinute) rateLimitPatch.requestsPerMinute = requestsPerMinute;
+    if (minDelaySeconds) rateLimitPatch.minDelaySeconds = minDelaySeconds;
+    if (maxDelaySeconds) rateLimitPatch.maxDelaySeconds = minDelaySeconds ? Math.max(minDelaySeconds, maxDelaySeconds) : maxDelaySeconds;
+    if (errorDelaySeconds) rateLimitPatch.errorDelaySeconds = errorDelaySeconds;
+    if (maxRuntimeSeconds) rateLimitPatch.maxRuntimeSeconds = maxRuntimeSeconds;
+    if (maxFindings) rateLimitPatch.maxFindings = maxFindings;
+    if (restMinMinutes) rateLimitPatch.restMinMinutes = restMinMinutes;
+    if (restMaxMinutes) rateLimitPatch.restMaxMinutes = restMinMinutes ? Math.max(restMinMinutes, restMaxMinutes) : restMaxMinutes;
+    if (Object.keys(rateLimitPatch).length > 0) {
+      await prisma.rateLimitPolicy.updateMany({
+        where: { searchProfileId: { in: profileIds } },
+        data: rateLimitPatch,
+      });
+    }
+  }
+
+  revalidatePath("/accounts");
+  revalidatePath("/tasks");
+  redirect(`/tasks?deleteNotice=${encodeURIComponent("Массовое действие применено.")}`);
 }
 
 export async function deleteTelegramConfigAction() {

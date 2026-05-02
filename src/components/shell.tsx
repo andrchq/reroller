@@ -1,11 +1,10 @@
-import { Boxes, ClipboardList, Home, KeyRound, LogOut, Radio, Settings, Target } from "lucide-react";
+import { Boxes, ClipboardList, Home, KeyRound, LogOut, Radio, Settings } from "lucide-react";
 import { logoutAction } from "@/lib/actions";
 import { LinkButton } from "@/components/ui";
 
 const nav = [
   { href: "/", label: "Обзор", shortLabel: "Обзор", icon: Home },
-  { href: "/accounts", label: "Аккаунты", shortLabel: "Акк.", icon: KeyRound },
-  { href: "/profiles", label: "Профили", shortLabel: "Проф.", icon: Target },
+  { href: "/accounts", label: "Аккаунты и профили", shortLabel: "Проф.", icon: KeyRound },
   { href: "/tasks", label: "Задачи", shortLabel: "Задачи", icon: Radio },
   { href: "/findings", label: "Находки", shortLabel: "IP", icon: ClipboardList },
   { href: "/settings", label: "Настройки", shortLabel: "Настр.", icon: Settings },
@@ -55,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="w-full px-3 py-4 sm:px-5 lg:px-6 xl:px-8 2xl:px-10">{children}</div>
       </main>
 
-      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-6 gap-1 rounded-2xl border border-white/10 bg-black/85 p-2 shadow-2xl shadow-black/70 backdrop-blur-2xl lg:hidden">
+      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 gap-1 rounded-2xl border border-white/10 bg-black/85 p-2 shadow-2xl shadow-black/70 backdrop-blur-2xl lg:hidden">
         {nav.map((item) => (
           <a
             key={item.href}
