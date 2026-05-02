@@ -21,7 +21,7 @@ export default async function FindingsPage() {
           {findings.map((finding) => (
             <ListCard key={finding.id} className="grid content-between gap-3">
               <div>
-                <div className="text-lg font-semibold text-[#f6c453]">{finding.floatingIpAddress}</div>
+                <div className="font-mono text-lg font-semibold text-white">{finding.floatingIpAddress}</div>
                 <div className="text-sm text-[var(--muted)]">
                   {finding.searchProfile.name} / {finding.searchProfile.providerAccount.name} / {finding.searchProfile.projectBinding.name}
                 </div>
@@ -40,7 +40,7 @@ export default async function FindingsPage() {
                 </form>
                 <form action={deleteFindingAction}>
                   <input type="hidden" name="findingId" value={finding.id} />
-                  <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                  <Button type="submit" className="bg-red-500/90 text-white hover:bg-red-400">
                     Удалить IP
                   </Button>
                 </form>

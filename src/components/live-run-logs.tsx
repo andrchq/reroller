@@ -19,7 +19,8 @@ const labels: Record<string, string> = {
 function levelClass(level: string) {
   if (level === "ERROR") return "text-red-300";
   if (level === "SUCCESS") return "text-emerald-300";
-  return "text-[#f6c453]";
+  if (level === "WARN") return "text-amber-300";
+  return "text-zinc-200";
 }
 
 export function LiveRunLogs({ runId, initialLogs }: { runId: string; initialLogs: LiveLog[] }) {
@@ -54,9 +55,9 @@ export function LiveRunLogs({ runId, initialLogs }: { runId: string; initialLogs
   }, [runId, lastCreatedAt]);
 
   return (
-    <div ref={boxRef} className="h-[38rem] overflow-auto rounded-md bg-black/40 p-3 font-mono text-xs">
+    <div ref={boxRef} className="h-[38rem] overflow-auto rounded-2xl border border-[var(--line)] bg-black/55 p-3 font-mono text-xs shadow-inner shadow-black/60">
       {logs.map((log) => (
-        <div key={log.id} className="mb-1 grid grid-cols-[6rem_6rem_1fr] gap-2">
+        <div key={log.id} className="mb-1 grid grid-cols-[6rem_6rem_1fr] gap-2 rounded-lg px-2 py-1 hover:bg-white/[0.035]">
           <span className="text-[var(--muted)]">{new Date(log.createdAt).toLocaleTimeString("ru-RU")}</span>
           <span className={levelClass(log.level)}>{labels[log.level] ?? log.level}</span>
           <span>{log.message}</span>

@@ -59,7 +59,7 @@ export function ProfileForm({
   const action = profile ? updateProfileAction : createProfileAction;
   const content = (
     <>
-      <div className="mb-3 text-sm font-semibold text-[#fff4d6]">{profile ? "Редактирование профиля" : "Новый профиль"}</div>
+      <div className="mb-3 text-sm font-semibold text-white">{profile ? "Редактирование профиля" : "Новый профиль"}</div>
       <form action={action} className="grid gap-3">
         {profile ? <input type="hidden" name="profileId" value={profile.id} /> : null}
         <Field label="Название">
@@ -85,9 +85,9 @@ export function ProfileForm({
             ))}
           </Select>
         </Field>
-        <div className="grid gap-2 text-sm text-[#cfc2a4]">
+        <div className="grid gap-2 text-sm text-[var(--muted-strong)]">
           <div>Зоны</div>
-          <div className="grid gap-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
+          <div className="grid gap-3 rounded-xl border border-[var(--line)] bg-white/[0.025] p-3">
             {!selectedProject ? <div className="text-xs text-[var(--muted)]">Выберите проект</div> : null}
             {selectedProject && regions.length === 0 ? <div className="text-xs text-[var(--muted)]">Нет зон после синхронизации</div> : null}
             {Object.entries(regionGroups).map(([city, zones]) => (
@@ -95,7 +95,7 @@ export function ProfileForm({
                 <div className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{city}</div>
                 <div className="grid gap-1.5">
                   {zones.map((zone) => (
-                    <label key={zone.name} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[#f6c453]/10">
+                    <label key={zone.name} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/[0.055]">
                       <input
                         type="checkbox"
                         name="regions"
@@ -108,12 +108,12 @@ export function ProfileForm({
                               : current.filter((item) => item !== zone.name),
                           );
                         }}
-                        className="h-4 w-4 accent-[#f6c453]"
+                        className="h-4 w-4 accent-white"
                       />
-                      <span className="font-semibold text-[#fff4d6]">{zone.name}</span>
+                      <span className="font-semibold text-white">{zone.name}</span>
                       <span className="text-xs text-[var(--muted)]">{zone.label}</span>
                       {zone.badge ? (
-                        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-200">{zone.badge}</span>
+                        <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-200">{zone.badge}</span>
                       ) : null}
                     </label>
                   ))}
@@ -123,7 +123,7 @@ export function ProfileForm({
           </div>
         </div>
         {selectedProject && regions.length === 0 ? (
-          <div className="rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">
             Для проекта нет сохраненных зон. Нажмите «Синхронизировать» на странице аккаунтов. Если зоны не появятся, проверьте роль сервисного пользователя: нужна `vpc.admin` на проект.
           </div>
         ) : null}
@@ -131,14 +131,14 @@ export function ProfileForm({
           <Textarea name="targets" required placeholder={"203.0.113.10\n198.51.100.0/24"} defaultValue={profile?.targets} />
         </Field>
         {isRegRu ? (
-          <div className="grid gap-3 rounded-md border border-[#f6c453]/20 bg-[#f6c453]/5 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#f6c453]">Ожидание сервера Reg.ru</div>
+          <div className="grid gap-3 rounded-xl border border-white/15 bg-white/[0.025] p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-300">Ожидание сервера Reg.ru</div>
             <div className="grid gap-3">
               <Field label="Проверка IP, сек">
                 <Input name="serverWaitIntervalSeconds" type="number" defaultValue={profile?.serverWaitIntervalSeconds ?? 10} min={5} />
               </Field>
               <input type="hidden" name="serverWaitMaxSeconds" value={profile?.serverWaitMaxSeconds ?? 240} />
-              <div className="text-xs leading-5 text-[#cbbf95]">IP ожидается без ограничения по времени. Остановить ожидание можно кнопкой остановки задачи.</div>
+              <div className="text-xs leading-5 text-[var(--muted)]">IP ожидается без ограничения по времени. Остановить ожидание можно кнопкой остановки задачи.</div>
             </div>
           </div>
         ) : (
@@ -180,7 +180,7 @@ export function ProfileForm({
     </>
   );
 
-  if (!framed) return <div className="rounded-md border border-[var(--line)] bg-black/20 p-3">{content}</div>;
+  if (!framed) return <div className="rounded-xl border border-[var(--line)] bg-white/[0.025] p-3">{content}</div>;
   return <Card>{content}</Card>;
 }
 

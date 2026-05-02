@@ -29,7 +29,7 @@ export async function Dashboard() {
         <SectionHeader title="Последние логи" description="Свежие события фоновых задач." />
         <div className="grid gap-2">
           {logs.map((log) => (
-            <div key={log.id} className="grid gap-2 rounded-md bg-black/20 p-3 text-sm md:grid-cols-[8rem_1fr_10rem]">
+            <div key={log.id} className="grid gap-2 rounded-xl border border-[var(--line)] bg-white/[0.025] p-3 text-sm md:grid-cols-[8rem_1fr_10rem]">
               <Badge tone={log.level === "ERROR" ? "bad" : log.level === "SUCCESS" ? "good" : "default"}>
                 {logLevelLabel(log.level)}
               </Badge>
@@ -48,7 +48,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   return (
     <Card>
       <div className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{label}</div>
-      <div className="mt-2 text-3xl font-semibold text-[#f6c453]">{value}</div>
+      <div className="mt-2 text-3xl font-semibold text-white">{value}</div>
     </Card>
   );
 }

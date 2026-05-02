@@ -47,7 +47,7 @@ export default async function ProfilesPage({
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-medium text-[#fff4d6]">{profile.name}</div>
+                        <div className="font-medium text-white">{profile.name}</div>
                         {selectedRegions.map((region) => (
                           <Badge key={region}>{region}</Badge>
                         ))}
@@ -57,7 +57,7 @@ export default async function ProfilesPage({
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1">
                         {profile.targets.slice(0, 6).map((target) => (
-                          <span key={target.id} className="rounded bg-[#f6c453]/10 px-2 py-1 text-xs text-[#f6c453]">
+                          <span key={target.id} className="rounded-lg border border-white/10 bg-white/[0.055] px-2 py-1 text-xs text-zinc-200">
                             {target.value}
                           </span>
                         ))}
@@ -71,7 +71,7 @@ export default async function ProfilesPage({
                       </form>
                       <form action={duplicateProfileAction}>
                         <input type="hidden" name="profileId" value={profile.id} />
-                        <Button type="submit" className="border border-[var(--line)] bg-transparent text-[#f6c453] hover:bg-[#f6c453]/10">
+                        <Button type="submit" className="border border-[var(--line)] bg-transparent text-white hover:bg-white/[0.075]">
                           Дублировать
                         </Button>
                       </form>
@@ -85,14 +85,14 @@ export default async function ProfilesPage({
                       ) : null}
                       <form action={deleteProfileAction}>
                         <input type="hidden" name="profileId" value={profile.id} />
-                        <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                        <Button type="submit" className="bg-red-500/90 text-white hover:bg-red-400">
                           Удалить
                         </Button>
                       </form>
                     </div>
                   </div>
-                  <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
-                    <summary className="cursor-pointer text-sm font-medium text-[#f6c453]">Редактировать профиль</summary>
+                  <details className="mt-3 rounded-xl border border-[var(--line)] bg-white/[0.025] p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-white">Редактировать профиль</summary>
                     <div className="mt-3">
                       <ProfileForm
                         projects={projectOptions}

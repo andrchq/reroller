@@ -42,7 +42,7 @@ export default async function SettingsPage({
           </form>
           {config ? (
             <form action={deleteTelegramConfigAction} className="mt-3">
-              <Button type="submit" className="bg-red-300 hover:bg-red-200">
+              <Button type="submit" className="bg-red-500/90 text-white hover:bg-red-400">
                 Удалить настройки Telegram
               </Button>
             </form>
@@ -50,7 +50,7 @@ export default async function SettingsPage({
         </Card>
         <Card>
           <SectionHeader title="Что указывать" />
-          <div className="grid gap-3 text-sm text-[#cfc2a4] md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 text-sm text-[var(--muted-strong)] md:grid-cols-2 xl:grid-cols-4">
             <p>Токен бота берется у BotFather.</p>
             <p>ID чата или группы обычно выглядит как отрицательное число, например `-1001234567890`.</p>
             <p>ID топика нужен только для Telegram-группы с включенными темами. Если оставить поле пустым, уведомления уйдут в общий чат группы.</p>

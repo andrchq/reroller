@@ -29,7 +29,7 @@ export function AccountForm({ account, framedTitle = true }: { account?: Account
       {account ? <input type="hidden" name="accountDbId" value={account.id} /> : null}
       {framedTitle ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-[#fff4d6]">{account ? "Редактировать аккаунт" : "Добавить провайдера"}</div>
+          <div className="text-sm font-semibold text-white">{account ? "Редактировать аккаунт" : "Добавить провайдера"}</div>
           <InfoTip label="Какие данные нужны">
             Для Selectel укажите service user credentials. Для Timeweb Cloud и Reg.ru укажите API token.
           </InfoTip>
@@ -83,7 +83,7 @@ export function AccountForm({ account, framedTitle = true }: { account?: Account
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1fr_15rem] lg:items-end">
-        <div className="rounded-md border border-[var(--line)] bg-black/20 px-3 py-2 text-xs leading-5 text-[#cfc2a4]">
+        <div className="rounded-xl border border-[var(--line)] bg-white/[0.025] px-3 py-2 text-xs leading-5 text-[var(--muted-strong)]">
           {providerHints[provider]}
         </div>
         <Button type="submit">{account ? "Сохранить изменения" : "Сохранить аккаунт"}</Button>

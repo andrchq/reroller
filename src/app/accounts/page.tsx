@@ -38,7 +38,7 @@ export default async function AccountsPage({
 
         <Card>
           <SectionHeader title="Подсказки" description="Минимум данных для подключения и синхронизации провайдеров." />
-          <div className="grid gap-3 text-sm text-[#cfc2a4] md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 text-sm text-[var(--muted-strong)] md:grid-cols-2 xl:grid-cols-4">
             <HelpItem
               title="Selectel"
               text="Создайте сервисного пользователя, выдайте роль vpc.admin на нужный проект, затем сохраните ID аккаунта, имя пользователя и пароль."
@@ -66,7 +66,7 @@ export default async function AccountsPage({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-medium text-[#fff4d6]">{account.name}</div>
+                      <div className="font-medium text-white">{account.name}</div>
                       <Badge>{providerLabel(account.provider)}</Badge>
                     </div>
                     {account.provider === "selectel" ? (
@@ -82,7 +82,7 @@ export default async function AccountsPage({
                     <SyncProjectsButton accountId={account.id} />
                     <form action={deleteAccountAction}>
                       <input type="hidden" name="accountDbId" value={account.id} />
-                      <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                      <Button type="submit" className="bg-red-500/90 text-white hover:bg-red-400">
                         Удалить
                       </Button>
                     </form>
@@ -92,7 +92,7 @@ export default async function AccountsPage({
                   <div className="mt-3 grid gap-1.5 text-xs leading-5 text-[var(--muted)]">
                     {account.projects.map((project) => (
                       <div key={project.id} className="min-w-0">
-                        <span className="text-[#fff4d6]">{project.name}:</span>{" "}
+                        <span className="text-white">{project.name}:</span>{" "}
                         <span className="break-words">
                           {project.regions.length > 0 ? project.regions.map((region) => region.name).join(", ") : "зон нет"}
                         </span>
@@ -100,8 +100,8 @@ export default async function AccountsPage({
                     ))}
                   </div>
                 ) : null}
-                <details className="mt-3 rounded-md border border-[var(--line)] bg-black/20 p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-[#f6c453]">Редактировать аккаунт</summary>
+                <details className="mt-3 rounded-xl border border-[var(--line)] bg-white/[0.025] p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-white">Редактировать аккаунт</summary>
                   <div className="mt-3">
                     <AccountForm
                       framedTitle={false}
@@ -127,9 +127,9 @@ export default async function AccountsPage({
 
 function HelpItem({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-md border border-[var(--line)] bg-black/20 p-3">
-      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#f6c453]">{title}</div>
-      <div className="text-sm leading-5 text-[#cfc2a4]">{text}</div>
+    <div className="rounded-xl border border-[var(--line)] bg-white/[0.025] p-3">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-white">{title}</div>
+      <div className="text-sm leading-5 text-[var(--muted-strong)]">{text}</div>
     </div>
   );
 }

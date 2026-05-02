@@ -80,7 +80,7 @@ export default async function TasksPage({
                   <ListCard key={profile.id}>
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-medium text-[#fff4d6]">{profile.name}</div>
+                        <div className="font-medium text-white">{profile.name}</div>
                         <div className="mt-1 text-xs text-[var(--muted)]">
                           {profile.providerAccount.name} / {profile.projectBinding.name} / {regions}
                         </div>
@@ -102,12 +102,12 @@ export default async function TasksPage({
                       </form>
                       <form action={stopProfileRunsAction}>
                         <input type="hidden" name="profileId" value={profile.id} />
-                        <Button type="submit" disabled={!isActive} className="bg-red-300 hover:bg-red-200">
+                        <Button type="submit" disabled={!isActive} className="bg-red-500/90 text-white hover:bg-red-400">
                           Остановить
                         </Button>
                       </form>
                       {lastRun ? (
-                        <a href={pageLink({ runId: lastRun.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="inline-flex h-9 items-center rounded-md border border-[var(--line)] px-3 text-sm text-[#f6c453] hover:bg-[#f6c453]/10">
+                        <a href={pageLink({ runId: lastRun.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="inline-flex h-9 items-center rounded-lg border border-[var(--line)] bg-white/[0.025] px-3 text-sm text-white hover:bg-white/[0.075]">
                           Логи
                         </a>
                       ) : null}
@@ -127,7 +127,7 @@ export default async function TasksPage({
             />
             <div className="grid gap-2">
               {runs.map((run) => (
-                <div key={run.id} className="rounded-md border border-[var(--line)] bg-black/20 p-3 hover:bg-[#f6c453]/10">
+                <div key={run.id} className="rounded-xl border border-[var(--line)] bg-white/[0.025] p-3 hover:bg-white/[0.055]">
                   <a href={pageLink({ runId: run.id, history: showAllHistory ? "all" : undefined, page: currentPage })} className="block">
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-medium">{run.searchProfile.name}</span>
@@ -139,7 +139,7 @@ export default async function TasksPage({
                   </a>
                   <form action={deleteRunAction} className="mt-2">
                     <input type="hidden" name="runId" value={run.id} />
-                    <Button type="submit" className="h-8 bg-red-300 px-2 text-xs hover:bg-red-200">
+                    <Button type="submit" className="h-8 bg-red-500/90 px-2 text-xs text-white hover:bg-red-400">
                       Удалить
                     </Button>
                   </form>
@@ -170,14 +170,14 @@ export default async function TasksPage({
             <>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-[#fff4d6]">{selected.searchProfile.name}</div>
+                  <div className="text-sm font-semibold text-white">{selected.searchProfile.name}</div>
                   <div className="text-xs text-[var(--muted)]">ID запуска: {selected.id}</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {["QUEUED", "RUNNING"].includes(selected.status) ? (
                     <form action={stopRunAction}>
                       <input type="hidden" name="runId" value={selected.id} />
-                      <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                      <Button type="submit" className="bg-red-500/90 text-white hover:bg-red-400">
                         Остановить
                       </Button>
                     </form>
@@ -189,7 +189,7 @@ export default async function TasksPage({
                   )}
                   <form action={deleteRunAction}>
                     <input type="hidden" name="runId" value={selected.id} />
-                    <Button type="submit" className="bg-red-300 hover:bg-red-200">
+                    <Button type="submit" className="bg-red-500/90 text-white hover:bg-red-400">
                       Удалить
                     </Button>
                   </form>
